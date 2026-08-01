@@ -22,10 +22,10 @@ public class TrackedShow {
 
     // --- Tier recalculation logic ---
     public void recalculateStatus() {
-        if (watchStatus == WatchStatus.NOT_WATCHED || watchStatus == WatchStatus.DROPPED) return;
+        if (watchStatus == WatchStatus.DROPPED) return;
 
-        boolean allWatched = seasons.stream().allMatch(Season::allWatched);
         boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes.stream().anyMatch(e -> e.watched));
+        boolean allWatched = !seasons.isEmpty() && seasons.stream().allMatch(Season::allWatched);
 
         if (!anyWatched) {
             watchStatus = WatchStatus.NOT_WATCHED;
