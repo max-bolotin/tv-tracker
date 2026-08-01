@@ -1,0 +1,234 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #0f0f13;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: #1a1a24;
+  border-bottom: 1px solid #2a2a3a;
+}
+.app-header h1 { font-size: 1.5rem; }
+.header-nav { display: flex; gap: 0.75rem; }
+.header-nav button {
+  padding: 0.4rem 1rem;
+  border: 1px solid #4a4a6a;
+  border-radius: 6px;
+  background: transparent;
+  color: #c0c0e0;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.header-nav button:hover { background: #2a2a3a; }
+
+/* Dashboard */
+.dashboard { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+/* Search */
+.search-bar { margin-bottom: 1.5rem; position: relative; }
+.search-input-row { display: flex; gap: 0.5rem; }
+.search-input-row input {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #3a3a5a;
+  background: #1a1a24;
+  color: #e0e0e0;
+  font-size: 1rem;
+}
+.search-input-row button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: none;
+  background: #5a5af0;
+  color: white;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.search-input-row button:hover { background: #4a4ae0; }
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  background: #1e1e2e;
+  border: 1px solid #3a3a5a;
+  border-radius: 8px;
+  list-style: none;
+  z-index: 100;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.search-results li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid #2a2a3a;
+}
+.search-results li:last-child { border-bottom: none; }
+.search-results img { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; }
+.search-results li > div { flex: 1; }
+.search-results li p { font-size: 0.8rem; color: #888; margin-top: 2px; }
+.search-results li button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #5a5af0;
+  background: transparent;
+  color: #9090f0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.search-results li button:hover { background: #5a5af020; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.tab {
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  border: 1px solid #3a3a5a;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.tab:hover { border-color: #5a5af0; color: #c0c0e0; }
+.tab.active { background: #5a5af0; border-color: #5a5af0; color: white; }
+
+/* Show Grid */
+.show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+.empty { color: #555; text-align: center; padding: 3rem; grid-column: 1/-1; }
+
+/* Show Card */
+.show-card {
+  background: #1a1a24;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 1px solid #2a2a3a;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.show-card:hover { transform: translateY(-3px); border-color: #5a5af0; }
+.show-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+.poster-placeholder {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background: #2a2a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: #555;
+}
+.card-info { padding: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.card-info h3 { font-size: 0.85rem; line-height: 1.2; }
+.seasons-count { font-size: 0.75rem; color: #888; }
+.delete-btn {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: #00000088;
+  border: none;
+  color: #ccc;
+  border-radius: 50%;
+  width: 24px; height: 24px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.show-card:hover .delete-btn { display: flex; }
+.delete-btn:hover { background: #cc3333; color: white; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.production-ongoing { background: #1a3a1a; color: #5fca5f; }
+.production-ended   { background: #3a1a1a; color: #ca5f5f; }
+.status-watching_now { background: #1a2a4a; color: #5f9fca; }
+.status-not_watched  { background: #2a2a2a; color: #888; }
+.status-up_to_date   { background: #2a3a1a; color: #9fca5f; }
+.status-finished     { background: #2a1a3a; color: #9f5fca; }
+.status-dropped      { background: #3a2a1a; color: #ca9f5f; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: #00000099;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+}
+.modal {
+  background: #1a1a24;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.5rem;
+  position: relative;
+  border: 1px solid #3a3a5a;
+}
+.modal-close {
+  position: absolute;
+  top: 1rem; right: 1rem;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.modal-close:hover { color: white; }
+.modal-header { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; }
+.modal-poster { width: 120px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.modal-meta h2 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+.overview { font-size: 0.9rem; color: #aaa; line-height: 1.5; margin-bottom: 0.75rem; }
+.badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Seasons */
+.seasons-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.season-accordion { border: 1px solid #2a2a3a; border-radius: 8px; overflow: hidden; }
+.season-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: #22223a;
+  cursor: pointer;
+  user-select: none;
+}
+.season-header:hover { background: #2a2a4a; }
+.season-header label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer; }
+.episode-list { list-style: none; padding: 0.5rem 1rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.episode-list li label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+.episode-list li label:hover { color: #c0c0ff; }

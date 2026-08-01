@@ -1,0 +1,9 @@
+target/
+data/
+*.class
+*.jar
+.idea/
+*.iml
+frontend/node_modules/
+frontend/dist/
+.env
