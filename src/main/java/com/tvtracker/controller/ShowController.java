@@ -41,6 +41,7 @@ public class ShowController {
     }
 
     /** Add a show to tracking by fetching its metadata from external API */
+    @SuppressWarnings("ClassEscapesDefinedScope")
     @PostMapping
     public TrackedShow addShow(@RequestBody AddShowRequest req) throws Exception {
         TrackedShow show = metadata.fetchDetails(req.tmdbId(), req.tvmazeId());
@@ -55,6 +56,7 @@ public class ShowController {
     }
 
     /** Update watch status manually (e.g. mark as DROPPED) */
+    @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/status")
     public ResponseEntity<TrackedShow> updateStatus(@PathVariable String id, @RequestBody StatusUpdate body) throws Exception {
         return storage.findById(id).map(show -> {
@@ -65,6 +67,7 @@ public class ShowController {
     }
 
     /** Toggle watched state for a specific episode */
+    @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/seasons/{season}/episodes/{episode}")
     public ResponseEntity<TrackedShow> toggleEpisode(
             @PathVariable String id,
@@ -84,6 +87,7 @@ public class ShowController {
     }
 
     /** Toggle all episodes in a season */
+    @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/seasons/{season}")
     public ResponseEntity<TrackedShow> toggleSeason(
             @PathVariable String id,
@@ -100,6 +104,7 @@ public class ShowController {
     }
 
     /** Toggle all episodes across every season */
+    @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/watched")
     public ResponseEntity<TrackedShow> toggleAllWatched(
             @PathVariable String id,
@@ -113,7 +118,14 @@ public class ShowController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    record AddShowRequest(Long tmdbId, Long tvmazeId) {}
-    record StatusUpdate(WatchStatus status) {}
-    record EpisodeToggle(boolean watched) {}
+    /** Persist a new display order given an ordered list of show IDs */
+    @PutMapping("/reorder")
+    public ResponseEntity<Void> reorder(@RequestBody List<String> orderedIds) throws Exception {
+        storage.reorder(orderedIds);
+        return ResponseEntity.noContent().build();
+    }
+
+    private record AddShowRequest(Long tmdbId, Long tvmazeId) {}
+    private record StatusUpdate(WatchStatus status) {}
+    private record EpisodeToggle(boolean watched) {}
 }

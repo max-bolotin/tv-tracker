@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import type { TrackedShow, WatchStatus } from '../types';
 import { api } from '../api/client';
-import { ShowCard } from '../components/ShowCard';
+import { DraggableGrid } from '../components/DraggableGrid';
 import { ShowDetail } from '../components/ShowDetail';
 import { SearchBar } from '../components/SearchBar';
 import { ScrollToTop } from '../components/ScrollToTop';
 import { RefreshButton } from '../components/RefreshButton';
 import type { ShowSearchResult } from '../types';
 
-const STATUS_ORDER: (WatchStatus)[] = [
+const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
 ];
 
@@ -30,23 +30,21 @@ const TABS: { label: string; value: WatchStatus | 'ALL' }[] = [
 ];
 
 export function Dashboard() {
-  // Master list — loaded once, never re-fetched on tab switch
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
   const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     api.getShows().then(setAllShows);
   }, []);
 
-  // Pure in-memory filter — instant, no network
   const visibleShows = useMemo(
     () => tab === 'ALL' ? allShows : allShows.filter(s => s.watchStatus === tab),
     [allShows, tab],
   );
 
-  // Groups for the "All" tab divider view
   const groups = useMemo(() => {
     if (tab !== 'ALL') return null;
     return STATUS_ORDER
@@ -70,11 +68,19 @@ export function Dashboard() {
     if (selected?.id === id) setSelected(null);
   };
 
-  // Bug fix: replace in master list — filtered view re-derives instantly via useMemo
   const handleUpdate = (updated: TrackedShow) => {
     setAllShows(prev => prev.map(s => s.id === updated.id ? updated : s));
     setSelected(updated);
   };
+
+  const handleReorder = useCallback((reordered: TrackedShow[]) => {
+    setAllShows(reordered);
+    // Debounce the API call — only persist after dragging stops for 400ms
+    if (reorderTimer.current) clearTimeout(reorderTimer.current);
+    reorderTimer.current = setTimeout(() => {
+      api.reorder(reordered.map(s => s.id));
+    }, 400);
+  }, []);
 
   const handleExport = async () => {
     const blob = await api.exportData();
@@ -91,8 +97,7 @@ export function Dashboard() {
     if (!file) return;
     try {
       await api.importData(file);
-      const fresh = await api.getShows();
-      setAllShows(fresh);
+      setAllShows(await api.getShows());
     } catch (err) {
       alert('Import failed.');
       console.error(err);
@@ -101,18 +106,7 @@ export function Dashboard() {
     }
   };
 
-  const renderGrid = (shows: TrackedShow[]) => (
-    <div className="show-grid">
-      {shows.map(show => (
-        <ShowCard
-          key={show.id}
-          show={show}
-          onClick={() => setSelected(show)}
-          onDelete={() => handleDelete(show.id)}
-        />
-      ))}
-    </div>
-  );
+  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: setSelected, onDelete: handleDelete };
 
   return (
     <div className="dashboard">
@@ -141,21 +135,19 @@ export function Dashboard() {
       </div>
 
       {groups ? (
-        // ALL tab: grouped sections with dividers
         groups.length === 0
           ? <p className="empty">No shows yet. Search and add one!</p>
           : groups.map((g, i) => (
               <div key={g.status}>
                 {i > 0 && <hr className="section-divider" />}
                 <h2 className="section-heading">{STATUS_LABELS[g.status]}</h2>
-                {renderGrid(g.shows)}
+                <DraggableGrid {...gridProps} visibleShows={g.shows} />
               </div>
             ))
       ) : (
-        // Single-status tab
         visibleShows.length === 0
           ? <p className="empty">No shows here yet.</p>
-          : renderGrid(visibleShows)
+          : <DraggableGrid {...gridProps} visibleShows={visibleShows} />
       )}
 
       {selected && (

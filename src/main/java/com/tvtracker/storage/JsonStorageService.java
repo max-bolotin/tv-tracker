@@ -46,6 +46,18 @@ public class JsonStorageService {
         return show;
     }
 
+    public synchronized void reorder(List<String> orderedIds) throws IOException {
+        List<TrackedShow> shows = loadAll();
+        Map<String, TrackedShow> byId = new LinkedHashMap<>();
+        shows.forEach(s -> byId.put(s.id, s));
+        List<TrackedShow> reordered = new ArrayList<>(orderedIds.stream()
+                .filter(byId::containsKey)
+                .map(byId::get)
+                .toList());
+        shows.stream().filter(s -> !orderedIds.contains(s.id)).forEach(reordered::add);
+        saveAll(reordered);
+    }
+
     public synchronized boolean delete(String id) throws IOException {
         List<TrackedShow> shows = loadAll();
         boolean removed = shows.removeIf(s -> s.id.equals(id));

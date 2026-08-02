@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 
@@ -10,6 +10,7 @@ export function SearchBar({ onAdd }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ShowSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const search = async () => {
     if (!query.trim()) return;
@@ -21,13 +22,28 @@ export function SearchBar({ onAdd }: Props) {
     }
   };
 
+  const dismiss = () => setResults([]);
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        dismiss();
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, []);
+
   return (
-    <div className="search-bar">
+    <div className="search-bar" ref={containerRef}>
       <div className="search-input-row">
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && search()}
+          onKeyDown={e => {
+            if (e.key === 'Enter') search();
+            if (e.key === 'Escape') dismiss();
+          }}
           placeholder="Search for a TV show..."
         />
         <button onClick={search} disabled={loading}>
@@ -43,7 +59,7 @@ export function SearchBar({ onAdd }: Props) {
                 <strong>{r.title}</strong>
                 <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
               </div>
-              <button onClick={() => { onAdd(r); setResults([]); setQuery(''); }}>
+              <button onClick={() => { onAdd(r); dismiss(); setQuery(''); }}>
                 + Track
               </button>
             </li>

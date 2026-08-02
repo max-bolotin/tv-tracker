@@ -121,6 +121,21 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
     }
   };
 
+  const handleDropped = async (dropped: boolean) => {
+    const newStatus = dropped ? 'DROPPED' : 'NOT_WATCHED';
+    const optimistic = { ...show, watchStatus: newStatus as WatchStatus };
+    setShow(optimistic);
+    onUpdate(optimistic);
+    try {
+      const confirmed = await api.updateStatus(show.id, newStatus as WatchStatus);
+      setShow(confirmed);
+      onUpdate(confirmed);
+    } catch {
+      setShow(show);
+      onUpdate(show);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -204,6 +219,15 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
             );
           })}
         </div>
+
+        <label className="mark-dropped">
+          <input
+            type="checkbox"
+            checked={show.watchStatus === 'DROPPED'}
+            onChange={e => handleDropped(e.target.checked)}
+          />
+          Stopped watching (Dropped)
+        </label>
       </div>
     </div>
   );

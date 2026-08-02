@@ -224,6 +224,20 @@ body {
   user-select: none;
 }
 .mark-all-watched:hover { color: #c0c0ff; }
+
+.mark-dropped {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #888;
+  cursor: pointer;
+  padding: 0.6rem 0;
+  margin-top: 0.75rem;
+  border-top: 1px solid #2a2a3a;
+  user-select: none;
+}
+.mark-dropped:hover { color: #ca9f5f; }
 .season-accordion { border: 1px solid #2a2a3a; border-radius: 8px; overflow: hidden; }
 .season-header {
   display: flex;
@@ -287,6 +301,12 @@ body {
   color: #666;
   margin-bottom: 0.75rem;
 }
+
+/* Drag and drop */
+.drag-wrapper { cursor: grab; }
+.drag-wrapper:active { cursor: grabbing; }
+.drag-wrapper[draggable]:hover .show-card { border-color: #5a5af088; }
+.drag-wrapper.drag-over .show-card { border-color: #5a5af0; outline: 2px dashed #5a5af066; }
 
 /* Scroll-to-top button */
 .scroll-to-top {

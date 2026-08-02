@@ -63,4 +63,11 @@ export const api = {
   },
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),
+
+  reorder: (orderedIds: string[]) =>
+    req<void>('/shows/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderedIds),
+    }),
 };
