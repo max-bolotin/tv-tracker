@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 
@@ -6,21 +6,35 @@ interface Props {
   onAdd: (result: ShowSearchResult) => void;
 }
 
-export function SearchBar({ onAdd }: Props) {
+export interface SearchBarHandle {
+  triggerSearch: (query: string) => void;
+}
+
+export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({ onAdd }, ref) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ShowSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const search = async () => {
-    if (!query.trim()) return;
+  const search = async (q = query) => {
+    if (!q.trim()) return;
     setLoading(true);
     try {
-      setResults(await api.searchShows(query));
+      setResults(await api.searchShows(q));
     } finally {
       setLoading(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    triggerSearch(q: string) {
+      setQuery(q);
+      inputRef.current?.focus();
+      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      search(q);
+    },
+  }));
 
   const dismiss = () => setResults([]);
 
@@ -38,6 +52,7 @@ export function SearchBar({ onAdd }: Props) {
     <div className="search-bar" ref={containerRef}>
       <div className="search-input-row">
         <input
+          ref={inputRef}
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => {
@@ -46,7 +61,7 @@ export function SearchBar({ onAdd }: Props) {
           }}
           placeholder="Search for a TV show..."
         />
-        <button onClick={search} disabled={loading}>
+        <button onClick={() => search()} disabled={loading}>
           {loading ? '...' : 'Search'}
         </button>
       </div>
@@ -68,4 +83,4 @@ export function SearchBar({ onAdd }: Props) {
       )}
     </div>
   );
-}
+});

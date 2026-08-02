@@ -69,6 +69,8 @@ export const api = {
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),
 
+  refreshShow: (id: string) => req<TrackedShow>(`/shows/${id}/refresh`, { method: 'POST' }),
+
   reorder: (orderedIds: string[]) =>
     req<void>('/shows/reorder', {
       method: 'PUT',

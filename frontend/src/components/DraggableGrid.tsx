@@ -9,9 +9,10 @@ interface Props {
   onReorder: (reordered: TrackedShow[]) => void;
   onSelect: (show: TrackedShow) => void;
   onDelete: (id: string) => void;
+  onRefresh: (id: string) => Promise<void>;
 }
 
-export function DraggableGrid({ shows, visibleShows, tab, onReorder, onSelect, onDelete }: Props) {
+export function DraggableGrid({ shows, visibleShows, tab, onReorder, onSelect, onDelete, onRefresh }: Props) {
   const dragId = useRef<string | null>(null);
 
   const handleDragStart = (id: string) => {
@@ -66,6 +67,7 @@ export function DraggableGrid({ shows, visibleShows, tab, onReorder, onSelect, o
             show={show}
             onClick={() => onSelect(show)}
             onDelete={() => onDelete(show.id)}
+            onRefresh={() => onRefresh(show.id)}
           />
         </div>
       ))}

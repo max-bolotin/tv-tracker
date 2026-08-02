@@ -152,6 +152,25 @@ body {
 .show-card:hover .delete-btn { display: flex; }
 .delete-btn:hover { background: #cc3333; color: white; }
 
+.refresh-card-btn {
+  position: absolute;
+  top: 6px; left: 6px;
+  background: #00000088;
+  border: none;
+  color: #ccc;
+  border-radius: 50%;
+  width: 24px; height: 24px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.show-card:hover .refresh-card-btn { display: flex; }
+.refresh-card-btn:hover { background: #1a1a4a; color: #9090f0; }
+.refresh-card-btn.spinning { display: flex; animation: spin 0.8s linear infinite; cursor: default; }
+
 /* Badges */
 .badge {
   display: inline-block;

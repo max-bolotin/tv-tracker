@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { TrackedShow } from '../types';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -12,13 +13,25 @@ interface Props {
   show: TrackedShow;
   onClick: () => void;
   onDelete: () => void;
+  onRefresh: () => Promise<void>;
 }
 
-export function ShowCard({ show, onClick, onDelete }: Props) {
+export function ShowCard({ show, onClick, onDelete, onRefresh }: Props) {
+  const [refreshing, setRefreshing] = useState(false);
+
   const handleClick = (e: React.MouseEvent) => {
-    // Only fire when the outer card itself is the target or a non-interactive child
     if ((e.target as HTMLElement).closest('button')) return;
     onClick();
+  };
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -37,6 +50,12 @@ export function ShowCard({ show, onClick, onDelete }: Props) {
           {STATUS_LABELS[show.watchStatus]}
         </span>
       </div>
+      <button
+        className={`refresh-card-btn${refreshing ? ' spinning' : ''}`}
+        onClick={handleRefresh}
+        title="Refresh metadata"
+        disabled={refreshing}
+      >⟳</button>
       <button
         className="delete-btn"
         onClick={e => { e.stopPropagation(); onDelete(); }}

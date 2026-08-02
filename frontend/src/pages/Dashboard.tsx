@@ -3,7 +3,7 @@ import type { TrackedShow, WatchStatus } from '../types';
 import { api } from '../api/client';
 import { DraggableGrid } from '../components/DraggableGrid';
 import { ShowDetail } from '../components/ShowDetail';
-import { SearchBar } from '../components/SearchBar';
+import { SearchBar, type SearchBarHandle } from '../components/SearchBar';
 import { ScrollToTop } from '../components/ScrollToTop';
 import { RefreshButton } from '../components/RefreshButton';
 import type { ShowSearchResult } from '../types';
@@ -34,6 +34,7 @@ export function Dashboard() {
   const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -118,7 +119,19 @@ export function Dashboard() {
     }
   };
 
-  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: setSelected, onDelete: handleDelete };
+  const handleRefreshShow = async (id: string) => {
+    const show = allShows.find(s => s.id === id);
+    try {
+      const updated = await api.refreshShow(id);
+      setAllShows(prev => prev.map(s => s.id === id ? updated : s));
+      if (selected?.id === id) setSelected(updated);
+    } catch {
+      // No API data — fall back to searching by title
+      if (show) searchBarRef.current?.triggerSearch(show.title);
+    }
+  };
+
+  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: setSelected, onDelete: handleDelete, onRefresh: handleRefreshShow };
 
   return (
     <div className="dashboard">
@@ -132,7 +145,7 @@ export function Dashboard() {
         </nav>
       </header>
 
-      <SearchBar onAdd={handleAdd} />
+      <SearchBar ref={searchBarRef} onAdd={handleAdd} />
 
       <div className="tabs">
         {TABS.map(t => (

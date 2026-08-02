@@ -125,6 +125,31 @@ public class ShowController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Re-fetch metadata from API, preserve watched state and watch status */
+    @PostMapping("/{id}/refresh")
+    public ResponseEntity<TrackedShow> refreshShow(@PathVariable String id) throws Exception {
+        return storage.findById(id).map(existing -> {
+            try {
+                TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
+                fresh.id = existing.id;
+                fresh.watchStatus = existing.watchStatus;
+                // Overlay watched flags by season+episode number
+                for (var existingSeason : existing.seasons) {
+                    fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()
+                        .ifPresent(freshSeason -> {
+                            for (var existingEp : existingSeason.episodes) {
+                                freshSeason.episodes.stream().filter(e -> e.number == existingEp.number).findFirst()
+                                    .ifPresent(freshEp -> freshEp.watched = existingEp.watched);
+                            }
+                        });
+                }
+                return ResponseEntity.ok(storage.save(fresh));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     private record AddShowRequest(Long tmdbId, Long tvmazeId) {}
     private record StatusUpdate(WatchStatus status) {}
     private record EpisodeToggle(boolean watched) {}
