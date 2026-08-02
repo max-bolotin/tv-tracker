@@ -23,68 +23,73 @@ public class ImportService {
      * Converts a human-friendly payload into fully-resolved TrackedShow list.
      * Shows that can't be resolved via the metadata API are added with title-only stubs.
      */
-    public List<TrackedShow> resolve(ImportExportPayload payload) {
+    public record ImportResult(List<TrackedShow> shows, List<String> stubTitles) {}
+
+    public ImportResult resolve(ImportExportPayload payload) {
         List<TrackedShow> result = new ArrayList<>();
+        List<String> stubs = new ArrayList<>();
 
-        addAll(result, payload.shows,        WatchStatus.WATCHING_NOW, true);
-        addAll(result, payload.watchlistShows, WatchStatus.NOT_WATCHED, false);
-        addAll(result, payload.upToDateShows,  WatchStatus.UP_TO_DATE,  false);
-        addAll(result, payload.finishedShows,  WatchStatus.FINISHED,    false);
-        addAll(result, payload.stoppedShows,   WatchStatus.DROPPED,     false);
+        addAll(result, stubs, payload.shows,         WatchStatus.WATCHING_NOW);
+        addAll(result, stubs, payload.watchlistShows, WatchStatus.NOT_WATCHED);
+        addAll(result, stubs, payload.upToDateShows,  WatchStatus.UP_TO_DATE);
+        addAll(result, stubs, payload.finishedShows,  WatchStatus.FINISHED);
+        addAll(result, stubs, payload.stoppedShows,   WatchStatus.DROPPED);
 
-        return result;
+        return new ImportResult(result, stubs);
     }
 
-    private void addAll(List<TrackedShow> result,
+    private void addAll(List<TrackedShow> result, List<String> stubs,
                         List<ImportExportPayload.ImportShow> imports,
-                        WatchStatus targetStatus,
-                        boolean applyWatchedSeasons) {
+                        WatchStatus targetStatus) {
         if (imports == null) return;
         for (var imp : imports) {
             try {
-                TrackedShow show = imp.seasons != null && !imp.seasons.isEmpty()
-                        ? restoreFromDetail(imp)       // lossless round-trip path
-                        : resolveFromApi(imp);         // hand-written import path
-
-                if (applyWatchedSeasons && imp.watchedSeasons != null && (imp.seasons == null || imp.seasons.isEmpty())) {
-                    markWatchedSeasons(show, imp.watchedSeasons);
-                }
-
-                if (targetStatus == WatchStatus.UP_TO_DATE
-                        || targetStatus == WatchStatus.FINISHED
-                        || targetStatus == WatchStatus.DROPPED
-                        || targetStatus == WatchStatus.NOT_WATCHED) {
-                    show.watchStatus = targetStatus;
-                } else {
-                    show.recalculateStatus();
-                }
+                TrackedShow show = fetchFresh(imp);
+                overlayWatchedState(show, imp);
+                show.watchStatus = targetStatus;
                 result.add(show);
             } catch (Exception e) {
-                log.warn("Could not resolve show '{}' ({}): {} — adding as stub", imp.title, imp.year, e.getMessage());
+                log.warn("Could not resolve show '{}': {} — adding as stub", imp.title, e.getMessage());
+                stubs.add(imp.title);
                 result.add(stub(imp, targetStatus));
             }
         }
     }
 
-    /** Restore a show directly from the embedded season/episode detail — no API call needed. */
-    private TrackedShow restoreFromDetail(ImportExportPayload.ImportShow imp) {
-        TrackedShow show = new TrackedShow();
-        show.id = UUID.randomUUID().toString();
-        show.title = imp.title;
-        show.seasons = new ArrayList<>();
-        for (var sd : imp.seasons) {
-            Season season = new Season(sd.number);
-            if (sd.episodes != null) {
-                for (var ed : sd.episodes) {
-                    Episode ep = new Episode(ed.number, ed.name, ed.airDate);
-                    ep.watched = ed.watched;
-                    season.episodes.add(ep);
-                }
-            }
-            show.seasons.add(season);
+    /** Fetch fresh metadata from API using stored IDs, falling back to title search. */
+    private TrackedShow fetchFresh(ImportExportPayload.ImportShow imp) {
+        // Prefer direct ID lookup — fastest and most accurate
+        if (imp.tmdbId != null || imp.tvmazeId != null) {
+            TrackedShow show = metadata.fetchDetails(imp.tmdbId, imp.tvmazeId);
+            show.id = UUID.randomUUID().toString();
+            return show;
         }
-        show.totalSeasons = show.seasons.size();
-        return show;
+        // Fall back to title search for hand-written imports
+        return resolveFromApi(imp);
+    }
+
+    /** Overlay watched flags from the export onto the freshly-fetched show. */
+    private void overlayWatchedState(TrackedShow show, ImportExportPayload.ImportShow imp) {
+        if (imp.seasons == null || imp.seasons.isEmpty()) {
+            if (imp.watchedSeasons != null) markWatchedSeasons(show, imp.watchedSeasons);
+            return;
+        }
+        // Build lookup: seasonNum -> episodeNum -> watched
+        Map<Integer, Map<Integer, Boolean>> watchedMap = new HashMap<>();
+        for (var sd : imp.seasons) {
+            if (sd.episodes == null) continue;
+            Map<Integer, Boolean> epMap = new HashMap<>();
+            for (var ed : sd.episodes) epMap.put(ed.number, ed.watched);
+            watchedMap.put(sd.number, epMap);
+        }
+        for (Season season : show.seasons) {
+            Map<Integer, Boolean> epMap = watchedMap.get(season.number);
+            if (epMap == null) continue;
+            for (Episode ep : season.episodes) {
+                Boolean watched = epMap.get(ep.number);
+                if (watched != null) ep.watched = watched;
+            }
+        }
     }
 
     private TrackedShow resolveFromApi(ImportExportPayload.ImportShow imp) {
@@ -135,8 +140,14 @@ public class ImportService {
 
         for (TrackedShow show : shows) {
             var entry = new ImportExportPayload.ImportShow();
-            entry.title = show.title;
-            entry.seasons = toSeasonDetails(show.seasons);
+            entry.title            = show.title;
+            entry.tmdbId           = show.tmdbId;
+            entry.tvmazeId         = show.tvmazeId;
+            entry.imdbId           = show.imdbId;
+            entry.posterPath       = show.posterPath;
+            entry.overview         = show.overview;
+            entry.productionStatus = show.productionStatus != null ? show.productionStatus.name() : null;
+            entry.seasons          = toSeasonDetails(show.seasons);
 
             // watched_seasons kept for human readability
             List<Integer> watchedSeasons = show.seasons.stream()

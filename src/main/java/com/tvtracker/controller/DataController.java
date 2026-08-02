@@ -6,6 +6,8 @@ import com.tvtracker.model.TrackedShow;
 import com.tvtracker.scheduler.DailyUpdateScheduler;
 import com.tvtracker.storage.ImportService;
 import com.tvtracker.storage.JsonStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/data")
 public class DataController {
+
+    private static final Logger log = LoggerFactory.getLogger(DataController.class);
 
     private final JsonStorageService storage;
     private final ImportService importService;
@@ -43,11 +47,14 @@ public class DataController {
     }
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> importData(@RequestParam("file") MultipartFile file) throws Exception {
+    public ResponseEntity<ImportResult> importData(@RequestParam("file") MultipartFile file) throws Exception {
+        log.info("Import started, file size: {} bytes", file.getSize());
         ImportExportPayload payload = mapper.readValue(file.getBytes(), ImportExportPayload.class);
-        List<TrackedShow> resolved = importService.resolve(payload);
-        storage.saveAll(resolved);
-        return ResponseEntity.ok("Imported " + resolved.size() + " shows.");
+        ImportService.ImportResult result = importService.resolve(payload);
+        storage.saveAll(result.shows());
+        log.info("Import complete: {} shows saved, {} stubs: {}",
+                result.shows().size(), result.stubTitles().size(), result.stubTitles());
+        return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
     }
 
     @PostMapping("/refresh")

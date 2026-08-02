@@ -24,6 +24,12 @@ public class ImportExportPayload {
     public static class ImportShow {
         public String title;
         public Integer year;
+        @JsonProperty("tmdb_id")        public Long tmdbId;
+        @JsonProperty("tvmaze_id")      public Long tvmazeId;
+        @JsonProperty("imdb_id")        public String imdbId;
+        @JsonProperty("poster_path")    public String posterPath;
+        public String overview;
+        @JsonProperty("production_status") public String productionStatus;
 
         @JsonProperty("watched_seasons")
         public List<Integer> watchedSeasons;
@@ -36,6 +42,18 @@ public class ImportExportPayload {
         public void setTitle(String title) { this.title = title; }
         public Integer getYear() { return year; }
         public void setYear(Integer year) { this.year = year; }
+        public Long getTmdbId() { return tmdbId; }
+        public void setTmdbId(Long tmdbId) { this.tmdbId = tmdbId; }
+        public Long getTvmazeId() { return tvmazeId; }
+        public void setTvmazeId(Long tvmazeId) { this.tvmazeId = tvmazeId; }
+        public String getImdbId() { return imdbId; }
+        public void setImdbId(String imdbId) { this.imdbId = imdbId; }
+        public String getPosterPath() { return posterPath; }
+        public void setPosterPath(String posterPath) { this.posterPath = posterPath; }
+        public String getOverview() { return overview; }
+        public void setOverview(String overview) { this.overview = overview; }
+        public String getProductionStatus() { return productionStatus; }
+        public void setProductionStatus(String productionStatus) { this.productionStatus = productionStatus; }
         public List<Integer> getWatchedSeasons() { return watchedSeasons; }
         public void setWatchedSeasons(List<Integer> watchedSeasons) { this.watchedSeasons = watchedSeasons; }
         public List<SeasonDetail> getSeasons() { return seasons; }

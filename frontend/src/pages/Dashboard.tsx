@@ -92,17 +92,29 @@ export function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
+  const [importing, setImporting] = useState(false);
+  const [importToast, setImportToast] = useState<string | null>(() => {
+    const msg = sessionStorage.getItem('importToast');
+    if (msg) { sessionStorage.removeItem('importToast'); return msg; }
+    return null;
+  });
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+    setImporting(true);
     try {
-      await api.importData(file);
-      setAllShows(await api.getShows());
+      const result = await api.importData(file);
+      console.info('[Import] complete:', result);
+      if (result.failedTitles.length > 0) {
+        sessionStorage.setItem('importToast', `Imported ${result.total} shows. Could not fetch metadata for: ${result.failedTitles.join(', ')}`);
+      }
+      window.location.reload();
     } catch (err) {
-      alert('Import failed.');
-      console.error(err);
-    } finally {
-      e.target.value = '';
+      console.error('[Import] failed:', err);
+      setImporting(false);
+      setImportToast('Import failed. Check the file and try again.');
     }
   };
 
@@ -159,6 +171,19 @@ export function Dashboard() {
       )}
 
       <ScrollToTop />
+
+      {importToast && (
+        <div className="import-toast" onClick={() => setImportToast(null)}>
+          ⚠️ {importToast}
+        </div>
+      )}
+
+      {importing && (
+        <div className="import-overlay">
+          <div className="import-spinner" />
+          <p>Importing & fetching metadata…</p>
+        </div>
+      )}
     </div>
   );
 }

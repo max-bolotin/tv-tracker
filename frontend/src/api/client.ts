@@ -6,7 +6,12 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, options);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+  }
 }
 
 export const api = {
@@ -59,7 +64,7 @@ export const api = {
   importData: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return req<string>('/data/import', { method: 'POST', body: form });
+    return req<{ total: number; failedTitles: string[] }>('/data/import', { method: 'POST', body: form });
   },
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),

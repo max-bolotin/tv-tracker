@@ -351,3 +351,48 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Import toast */
+.import-toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2a2a1a;
+  border: 1px solid #7a6a2a;
+  color: #d4b84a;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  max-width: 600px;
+  text-align: center;
+  z-index: 400;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.import-toast:hover { border-color: #a08a3a; }
+
+/* Import overlay */
+.import-overlay {
+  position: fixed;
+  inset: 0;
+  background: #00000099;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  z-index: 300;
+}
+.import-overlay p {
+  color: #c0c0e0;
+  font-size: 1rem;
+}
+.import-spinner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid #2a2a3a;
+  border-top-color: #5a5af0;
+  animation: spin 0.8s linear infinite;
+}
