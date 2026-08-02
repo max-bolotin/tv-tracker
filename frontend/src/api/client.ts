@@ -47,6 +47,13 @@ export const api = {
       body: JSON.stringify({ watched }),
     }),
 
+  toggleAllWatched: (id: string, watched: boolean) =>
+    req<TrackedShow>(`/shows/${id}/watched`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ watched }),
+    }),
+
   exportData: () => fetch(BASE + '/data/export').then(r => r.blob()),
 
   importData: (file: File) => {
@@ -54,4 +61,6 @@ export const api = {
     form.append('file', file);
     return req<string>('/data/import', { method: 'POST', body: form });
   },
+
+  refresh: () => req<string>('/data/refresh', { method: 'POST' }),
 };

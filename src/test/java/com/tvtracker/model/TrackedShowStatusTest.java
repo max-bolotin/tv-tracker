@@ -11,7 +11,7 @@ class TrackedShowStatusTest {
     // --- helpers ---
 
     private static Episode ep(int n, boolean watched) {
-        Episode e = new Episode(n, "Episode " + n);
+        Episode e = new Episode(n, "Episode " + n, null);
         e.watched = watched;
         return e;
     }

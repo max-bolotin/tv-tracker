@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
 public class DailyUpdateScheduler {
@@ -29,6 +28,11 @@ public class DailyUpdateScheduler {
     @Scheduled(cron = "${app.scheduler.cron}")
     public void checkForNewEpisodes() {
         log.info("Running daily episode update check...");
+        doCheck();
+    }
+
+    /** Called by the manual refresh endpoint — same logic, no cron restriction. */
+    public void doCheck() {
         try {
             List<TrackedShow> shows = storage.loadAll();
             List<TrackedShow> upToDate = shows.stream()

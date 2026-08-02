@@ -5,6 +5,7 @@ export interface Episode {
   number: number;
   name: string;
   watched: boolean;
+  airDate?: string; // ISO-8601, e.g. "2024-03-15", absent if unknown
 }
 
 export interface Season {

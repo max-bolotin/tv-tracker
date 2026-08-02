@@ -3,6 +3,7 @@ package com.tvtracker.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.model.ImportExportPayload;
 import com.tvtracker.model.TrackedShow;
+import com.tvtracker.scheduler.DailyUpdateScheduler;
 import com.tvtracker.storage.ImportService;
 import com.tvtracker.storage.JsonStorageService;
 import org.springframework.http.HttpHeaders;
@@ -20,11 +21,14 @@ public class DataController {
     private final JsonStorageService storage;
     private final ImportService importService;
     private final ObjectMapper mapper;
+    private final DailyUpdateScheduler scheduler;
 
-    public DataController(JsonStorageService storage, ImportService importService, ObjectMapper mapper) {
+    public DataController(JsonStorageService storage, ImportService importService,
+                          ObjectMapper mapper, DailyUpdateScheduler scheduler) {
         this.storage = storage;
         this.importService = importService;
         this.mapper = mapper;
+        this.scheduler = scheduler;
     }
 
     @GetMapping("/export")
@@ -44,5 +48,11 @@ public class DataController {
         List<TrackedShow> resolved = importService.resolve(payload);
         storage.saveAll(resolved);
         return ResponseEntity.ok("Imported " + resolved.size() + " shows.");
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<String> refresh() {
+        scheduler.doCheck();
+        return ResponseEntity.ok("Refresh complete.");
     }
 }

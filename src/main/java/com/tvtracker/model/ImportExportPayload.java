@@ -28,12 +28,45 @@ public class ImportExportPayload {
         @JsonProperty("watched_seasons")
         public List<Integer> watchedSeasons;
 
+        /** Full episode-level detail — present in exports, optional in hand-written imports */
+        @JsonProperty("seasons")
+        public List<SeasonDetail> seasons;
+
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
         public Integer getYear() { return year; }
         public void setYear(Integer year) { this.year = year; }
         public List<Integer> getWatchedSeasons() { return watchedSeasons; }
         public void setWatchedSeasons(List<Integer> watchedSeasons) { this.watchedSeasons = watchedSeasons; }
+        public List<SeasonDetail> getSeasons() { return seasons; }
+        public void setSeasons(List<SeasonDetail> seasons) { this.seasons = seasons; }
+    }
+
+    public static class SeasonDetail {
+        public int number;
+        public List<EpisodeDetail> episodes;
+
+        public int getNumber() { return number; }
+        public void setNumber(int number) { this.number = number; }
+        public List<EpisodeDetail> getEpisodes() { return episodes; }
+        public void setEpisodes(List<EpisodeDetail> episodes) { this.episodes = episodes; }
+    }
+
+    public static class EpisodeDetail {
+        public int number;
+        public String name;
+        public boolean watched;
+        @JsonProperty("air_date")
+        public String airDate;
+
+        public int getNumber() { return number; }
+        public void setNumber(int number) { this.number = number; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public boolean isWatched() { return watched; }
+        public void setWatched(boolean watched) { this.watched = watched; }
+        public String getAirDate() { return airDate; }
+        public void setAirDate(String airDate) { this.airDate = airDate; }
     }
 
     public List<ImportShow> getShows() { return shows; }

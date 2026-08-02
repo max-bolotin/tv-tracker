@@ -1,20 +1,20 @@
 package com.tvtracker.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import java.util.ArrayList;
-import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Episode {
     public int number;
     public String name;
     public boolean watched;
+    public String airDate; // ISO-8601 date string, e.g. "2024-03-15", null if unknown
 
     public Episode() {}
 
-    public Episode(int number, String name) {
+    public Episode(int number, String name, String airDate) {
         this.number = number;
         this.name = name;
+        this.airDate = airDate;
         this.watched = false;
     }
 
@@ -25,4 +25,6 @@ public class Episode {
     public void setName(String name) { this.name = name; }
     public boolean isWatched() { return watched; }
     public void setWatched(boolean watched) { this.watched = watched; }
+    public String getAirDate() { return airDate; }
+    public void setAirDate(String airDate) { this.airDate = airDate; }
 }

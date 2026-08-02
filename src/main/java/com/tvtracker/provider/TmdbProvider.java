@@ -101,7 +101,12 @@ public class TmdbProvider implements MetadataProvider {
             JsonNode root = get(url);
             Season season = new Season(seasonNumber);
             for (JsonNode ep : root.path("episodes")) {
-                season.episodes.add(new Episode(ep.path("episode_number").asInt(), ep.path("name").asText()));
+                String airDate = ep.path("air_date").asText(null);
+                season.episodes.add(new Episode(
+                        ep.path("episode_number").asInt(),
+                        ep.path("name").asText(),
+                        airDate
+                ));
             }
             return season;
         } catch (Exception e) {

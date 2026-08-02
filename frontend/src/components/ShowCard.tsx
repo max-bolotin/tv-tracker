@@ -15,8 +15,14 @@ interface Props {
 }
 
 export function ShowCard({ show, onClick, onDelete }: Props) {
+  const handleClick = (e: React.MouseEvent) => {
+    // Only fire when the outer card itself is the target or a non-interactive child
+    if ((e.target as HTMLElement).closest('button')) return;
+    onClick();
+  };
+
   return (
-    <div className="show-card" onClick={onClick}>
+    <div className="show-card" onClick={handleClick}>
       {show.posterPath
         ? <img src={show.posterPath} alt={show.title} />
         : <div className="poster-placeholder">{show.title[0]}</div>

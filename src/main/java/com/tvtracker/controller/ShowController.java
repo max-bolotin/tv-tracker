@@ -99,6 +99,20 @@ public class ShowController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    /** Toggle all episodes across every season */
+    @PatchMapping("/{id}/watched")
+    public ResponseEntity<TrackedShow> toggleAllWatched(
+            @PathVariable String id,
+            @RequestBody EpisodeToggle body) throws Exception {
+
+        return storage.findById(id).map(show -> {
+            show.seasons.forEach(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
+            show.recalculateStatus();
+            try { return ResponseEntity.ok(storage.save(show)); }
+            catch (Exception e) { throw new RuntimeException(e); }
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     record AddShowRequest(Long tmdbId, Long tvmazeId) {}
     record StatusUpdate(WatchStatus status) {}
     record EpisodeToggle(boolean watched) {}

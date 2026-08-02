@@ -42,12 +42,14 @@ public class ImportService {
         if (imports == null) return;
         for (var imp : imports) {
             try {
-                TrackedShow show = resolveShow(imp);
-                if (applyWatchedSeasons && imp.watchedSeasons != null) {
+                TrackedShow show = imp.seasons != null && !imp.seasons.isEmpty()
+                        ? restoreFromDetail(imp)       // lossless round-trip path
+                        : resolveFromApi(imp);         // hand-written import path
+
+                if (applyWatchedSeasons && imp.watchedSeasons != null && (imp.seasons == null || imp.seasons.isEmpty())) {
                     markWatchedSeasons(show, imp.watchedSeasons);
                 }
-                // For up_to_date / finished / stopped we trust the declared status directly
-                // rather than recalculating, since we may not have full episode data
+
                 if (targetStatus == WatchStatus.UP_TO_DATE
                         || targetStatus == WatchStatus.FINISHED
                         || targetStatus == WatchStatus.DROPPED
@@ -55,10 +57,6 @@ public class ImportService {
                     show.watchStatus = targetStatus;
                 } else {
                     show.recalculateStatus();
-                    // If nothing was actually marked watched, fall back to NOT_WATCHED
-                    if (show.watchStatus == WatchStatus.NOT_WATCHED && targetStatus == WatchStatus.WATCHING_NOW) {
-                        show.watchStatus = WatchStatus.NOT_WATCHED;
-                    }
                 }
                 result.add(show);
             } catch (Exception e) {
@@ -68,12 +66,33 @@ public class ImportService {
         }
     }
 
-    private TrackedShow resolveShow(ImportExportPayload.ImportShow imp) {
+    /** Restore a show directly from the embedded season/episode detail — no API call needed. */
+    private TrackedShow restoreFromDetail(ImportExportPayload.ImportShow imp) {
+        TrackedShow show = new TrackedShow();
+        show.id = UUID.randomUUID().toString();
+        show.title = imp.title;
+        show.seasons = new ArrayList<>();
+        for (var sd : imp.seasons) {
+            Season season = new Season(sd.number);
+            if (sd.episodes != null) {
+                for (var ed : sd.episodes) {
+                    Episode ep = new Episode(ed.number, ed.name, ed.airDate);
+                    ep.watched = ed.watched;
+                    season.episodes.add(ep);
+                }
+            }
+            show.seasons.add(season);
+        }
+        show.totalSeasons = show.seasons.size();
+        return show;
+    }
+
+    private TrackedShow resolveFromApi(ImportExportPayload.ImportShow imp) {
         List<ShowSearchResult> hits = metadata.search(imp.title);
         ShowSearchResult best = hits.stream()
                 .filter(h -> imp.year == null || matchesYear(h, imp.year))
                 .findFirst()
-                .orElse(hits.isEmpty() ? null : hits.get(0));
+                .orElse(hits.isEmpty() ? null : hits.getFirst());
 
         if (best == null) throw new RuntimeException("No search results");
 
@@ -108,7 +127,7 @@ public class ImportService {
     /** Converts the current tracked shows back to the human-friendly export format. */
     public ImportExportPayload toPayload(List<TrackedShow> shows) {
         ImportExportPayload payload = new ImportExportPayload();
-        payload.shows        = new ArrayList<>();
+        payload.shows           = new ArrayList<>();
         payload.watchlistShows  = new ArrayList<>();
         payload.upToDateShows   = new ArrayList<>();
         payload.finishedShows   = new ArrayList<>();
@@ -117,23 +136,39 @@ public class ImportService {
         for (TrackedShow show : shows) {
             var entry = new ImportExportPayload.ImportShow();
             entry.title = show.title;
+            entry.seasons = toSeasonDetails(show.seasons);
 
+            // watched_seasons kept for human readability
             List<Integer> watchedSeasons = show.seasons.stream()
-                    .filter(Season::allWatched)
-                    .map(s -> s.number)
-                    .toList();
+                    .filter(Season::allWatched).map(s -> s.number).toList();
 
             switch (show.watchStatus) {
                 case WATCHING_NOW -> {
                     entry.watchedSeasons = watchedSeasons.isEmpty() ? null : watchedSeasons;
                     payload.shows.add(entry);
                 }
-                case NOT_WATCHED  -> payload.watchlistShows.add(entry);
-                case UP_TO_DATE   -> payload.upToDateShows.add(entry);
-                case FINISHED     -> payload.finishedShows.add(entry);
-                case DROPPED      -> payload.stoppedShows.add(entry);
+                case NOT_WATCHED -> payload.watchlistShows.add(entry);
+                case UP_TO_DATE  -> payload.upToDateShows.add(entry);
+                case FINISHED    -> payload.finishedShows.add(entry);
+                case DROPPED     -> payload.stoppedShows.add(entry);
             }
         }
         return payload;
+    }
+
+    private List<ImportExportPayload.SeasonDetail> toSeasonDetails(List<Season> seasons) {
+        return seasons.stream().map(s -> {
+            var sd = new ImportExportPayload.SeasonDetail();
+            sd.number = s.number;
+            sd.episodes = s.episodes.stream().map(e -> {
+                var ed = new ImportExportPayload.EpisodeDetail();
+                ed.number  = e.number;
+                ed.name    = e.name;
+                ed.watched = e.watched;
+                ed.airDate = e.airDate;
+                return ed;
+            }).toList();
+            return sd;
+        }).toList();
     }
 }

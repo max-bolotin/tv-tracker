@@ -3,6 +3,7 @@ package com.tvtracker.provider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.model.*;
+import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -28,7 +29,8 @@ public class TvMazeProvider implements MetadataProvider {
     @Override
     public List<ShowSearchResult> search(String query) {
         try {
-            String url = baseUrl + "/search/shows?q=" + java.net.URLEncoder.encode(query, "UTF-8");
+            String url = baseUrl + "/search/shows?q=" + java.net.URLEncoder.encode(query,
+                StandardCharsets.UTF_8);
             JsonNode root = get(url);
             List<ShowSearchResult> results = new ArrayList<>();
             for (JsonNode item : root) {
@@ -65,8 +67,10 @@ public class TvMazeProvider implements MetadataProvider {
             for (JsonNode ep : root.path("_embedded").path("episodes")) {
                 int sNum = ep.path("season").asInt();
                 int eNum = ep.path("number").asInt();
+                String airDate = ep.path("airdate").asText(null);
+                if (airDate != null && airDate.isBlank()) airDate = null;
                 seasonMap.computeIfAbsent(sNum, Season::new)
-                         .episodes.add(new Episode(eNum, ep.path("name").asText()));
+                         .episodes.add(new Episode(eNum, ep.path("name").asText(), airDate));
             }
             show.seasons = new ArrayList<>(seasonMap.values());
             show.totalSeasons = show.seasons.size();

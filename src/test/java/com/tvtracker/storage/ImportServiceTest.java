@@ -46,7 +46,10 @@ class ImportServiceTest {
         show.seasons = new java.util.ArrayList<>();
         for (int n : seasonNumbers) {
             Season s = new Season(n);
-            s.episodes = List.of(new Episode(1, "E1"), new Episode(2, "E2"));
+            s.episodes = new java.util.ArrayList<>(List.of(
+                    new Episode(1, "E1", null),
+                    new Episode(2, "E2", null)
+            ));
             show.seasons.add(s);
         }
         return show;
