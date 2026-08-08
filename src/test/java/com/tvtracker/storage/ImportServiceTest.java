@@ -16,8 +16,6 @@ class ImportServiceTest {
 
     // --- stub MetadataService that returns a show built from the search title ---
     private static com.tvtracker.provider.MetadataService stubMetadata(TrackedShow... returnedShows) {
-        // We can't easily subclass MetadataService (it has final deps), so we build a minimal
-        // anonymous subclass via a helper that overrides the two methods ImportService uses.
         return new com.tvtracker.provider.MetadataService(null, null) {
             int callCount = 0;
 
@@ -25,14 +23,15 @@ class ImportServiceTest {
             public List<ShowSearchResult> search(String query) {
                 ShowSearchResult r = new ShowSearchResult();
                 r.title = query;
-                r.tvmazeId = 1L;
+                // no tmdbId/tvmazeId — forces resolveFromApi path which calls fetchDetails next
                 return List.of(r);
             }
 
             @Override
             public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId) {
+                if (returnedShows.length == 0) throw new RuntimeException("No stub shows");
                 TrackedShow show = returnedShows[Math.min(callCount++, returnedShows.length - 1)];
-                show.id = null; // ImportService assigns the UUID
+                show.id = null;
                 return show;
             }
         };
@@ -67,7 +66,7 @@ class ImportServiceTest {
         entry.title = "Firefly";
         payload.watchlistShows = List.of(entry);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
 
         assertEquals(1, result.size());
         assertEquals(WatchStatus.NOT_WATCHED, result.getFirst().watchStatus);
@@ -84,7 +83,7 @@ class ImportServiceTest {
         entry.watchedSeasons = List.of(1, 2);
         payload.shows = List.of(entry);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
         TrackedShow show = result.getFirst();
 
         assertTrue(show.seasons.get(0).allWatched(), "Season 1 should be fully watched");
@@ -103,7 +102,7 @@ class ImportServiceTest {
         entry.watchedSeasons = List.of(1); // season 2 not watched
         payload.shows = List.of(entry);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
         assertEquals(WatchStatus.WATCHING_NOW, result.getFirst().watchStatus);
     }
 
@@ -117,7 +116,7 @@ class ImportServiceTest {
         entry.title = "Good Omens";
         payload.finishedShows = List.of(entry);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
         assertEquals(WatchStatus.FINISHED, result.getFirst().watchStatus);
     }
 
@@ -131,7 +130,7 @@ class ImportServiceTest {
         entry.title = "The Recruit";
         payload.stoppedShows = List.of(entry);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
         assertEquals(WatchStatus.DROPPED, result.getFirst().watchStatus);
     }
 
@@ -146,7 +145,7 @@ class ImportServiceTest {
         var e2 = new ImportExportPayload.ImportShow(); e2.title = "Show B";
         payload.watchlistShows = List.of(e1, e2);
 
-        List<TrackedShow> result = service.resolve(payload);
+        List<TrackedShow> result = service.resolve(payload).shows();
         assertNotEquals(result.get(0).id, result.get(1).id);
     }
 
@@ -156,7 +155,7 @@ class ImportServiceTest {
         ImportExportPayload payload = new ImportExportPayload();
         // all lists are null — should not throw
         assertDoesNotThrow(() -> service.resolve(payload));
-        assertTrue(service.resolve(payload).isEmpty());
+        assertTrue(service.resolve(payload).shows().isEmpty());
     }
 
     // --- export (toPayload) tests ---
