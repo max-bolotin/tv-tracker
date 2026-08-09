@@ -50,15 +50,17 @@ public class DailyUpdateScheduler {
                         || (show.tvmazeId != null && updatedTvmaze.contains(show.tvmazeId));
 
                 if (hasUpdate) {
-                    // Re-fetch metadata to get new seasons/episodes
                     try {
                         TrackedShow fresh = metadata.fetchDetails(show.tmdbId, show.tvmazeId);
-                        // Merge: preserve watched state, add new episodes as unwatched
-                        mergeNewEpisodes(show, fresh);
-                        show.watchStatus = WatchStatus.WATCHING_NOW;
+                        boolean hasNewEpisodes = mergeNewEpisodes(show, fresh);
+                        if (hasNewEpisodes) {
+                            show.watchStatus = WatchStatus.WATCHING_NOW;
+                            log.info("Show '{}' moved to WATCHING_NOW (new episodes added)", show.title);
+                        } else {
+                            log.info("Show '{}' was updated but has no new episodes — keeping UP_TO_DATE", show.title);
+                        }
                         storage.save(show);
                         anyChanged = true;
-                        log.info("Show '{}' moved to WATCHING_NOW (new episodes detected)", show.title);
                     } catch (Exception e) {
                         log.warn("Failed to refresh show '{}': {}", show.title, e.getMessage());
                     }
@@ -70,21 +72,31 @@ public class DailyUpdateScheduler {
         }
     }
 
-    private void mergeNewEpisodes(TrackedShow existing, TrackedShow fresh) {
+    /** Merges fresh metadata into existing show. Returns true if any new episodes were added. */
+    private boolean mergeNewEpisodes(TrackedShow existing, TrackedShow fresh) {
+        boolean addedAny = false;
         for (var freshSeason : fresh.seasons) {
             var existingSeason = existing.seasons.stream()
                     .filter(s -> s.number == freshSeason.number).findFirst();
             if (existingSeason.isEmpty()) {
-                existing.seasons.add(freshSeason); // brand new season
+                if (!freshSeason.episodes.isEmpty()) {
+                    existing.seasons.add(freshSeason);
+                    addedAny = true;
+                }
+                // empty new season (announced but no episodes yet) — skip entirely
             } else {
                 var es = existingSeason.get();
                 for (var freshEp : freshSeason.episodes) {
                     boolean alreadyExists = es.episodes.stream().anyMatch(e -> e.number == freshEp.number);
-                    if (!alreadyExists) es.episodes.add(freshEp);
+                    if (!alreadyExists) {
+                        es.episodes.add(freshEp);
+                        addedAny = true;
+                    }
                 }
             }
         }
         existing.totalSeasons = fresh.totalSeasons;
         existing.productionStatus = fresh.productionStatus;
+        return addedAny;
     }
 }
