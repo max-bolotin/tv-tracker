@@ -37,8 +37,19 @@ export function Dashboard() {
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const localWrites = useRef(0);
+
   useEffect(() => {
     api.getShows().then(setAllShows);
+  }, []);
+
+  useEffect(() => {
+    const es = new EventSource('/api/events');
+    es.addEventListener('data-changed', () => {
+      if (localWrites.current > 0) { localWrites.current--; return; }
+      api.getShows().then(setAllShows);
+    });
+    return () => es.close();
   }, []);
 
   const visibleShows = useMemo(
@@ -55,21 +66,25 @@ export function Dashboard() {
 
   const handleAdd = async (result: ShowSearchResult) => {
     try {
+      localWrites.current++;
       const show = await api.addShow(result.tmdbId, result.tvmazeId);
       setAllShows(prev => [show, ...prev]);
     } catch (e) {
+      localWrites.current--;
       alert('Failed to add show. Check console.');
       console.error(e);
     }
   };
 
   const handleDelete = async (id: string) => {
+    localWrites.current++;
     await api.deleteShow(id);
     setAllShows(prev => prev.filter(s => s.id !== id));
     if (selected?.id === id) setSelected(null);
   };
 
   const handleUpdate = (updated: TrackedShow) => {
+    localWrites.current++;
     setAllShows(prev => prev.map(s => s.id === updated.id ? updated : s));
     setSelected(updated);
   };
@@ -79,6 +94,7 @@ export function Dashboard() {
     // Debounce the API call — only persist after dragging stops for 400ms
     if (reorderTimer.current) clearTimeout(reorderTimer.current);
     reorderTimer.current = setTimeout(() => {
+      localWrites.current++;
       api.reorder(reordered.map(s => s.id));
     }, 400);
   }, []);

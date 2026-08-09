@@ -2,6 +2,7 @@ package com.tvtracker.storage;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tvtracker.controller.SseController;
 import com.tvtracker.model.TrackedShow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,11 +16,17 @@ public class JsonStorageService {
 
     private final File dataFile;
     private final ObjectMapper mapper;
+    private final SseController sse;
 
-    public JsonStorageService(@Value("${app.storage.path}") String storagePath, ObjectMapper mapper) throws IOException {
+    public JsonStorageService(@Value("${app.storage.path}") String storagePath,
+                              ObjectMapper mapper, SseController sse) throws IOException {
         this.mapper = mapper;
+        this.sse = sse;
         this.dataFile = new File(storagePath);
-        dataFile.getParentFile().mkdirs();
+        File parent = dataFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Failed to create storage directory: " + parent.getAbsolutePath());
+        }
         if (!dataFile.exists()) {
             mapper.writeValue(dataFile, new ArrayList<>());
         }
@@ -31,6 +38,7 @@ public class JsonStorageService {
 
     public synchronized void saveAll(List<TrackedShow> shows) throws IOException {
         mapper.writerWithDefaultPrettyPrinter().writeValue(dataFile, shows);
+        sse.broadcast();
     }
 
     public synchronized Optional<TrackedShow> findById(String id) throws IOException {
