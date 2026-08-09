@@ -67,6 +67,18 @@ public class DailyUpdateScheduler {
                 }
             }
             if (!anyChanged) log.info("No UP_TO_DATE shows have new episodes.");
+
+            // Heal any WATCHING_NOW shows where all episodes are already watched
+            // (e.g. stuck there from a previous bug or an empty-season false-positive)
+            for (TrackedShow show : shows) {
+                if (show.watchStatus != WatchStatus.WATCHING_NOW) continue;
+                WatchStatus before = show.watchStatus;
+                show.recalculateStatus();
+                if (show.watchStatus != before) {
+                    storage.save(show);
+                    log.info("Show '{}' healed: {} → {}", show.title, before, show.watchStatus);
+                }
+            }
         } catch (Exception e) {
             log.error("Daily update check failed", e);
         }
