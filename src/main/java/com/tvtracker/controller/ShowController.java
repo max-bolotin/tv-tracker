@@ -1,5 +1,6 @@
 package com.tvtracker.controller;
 
+import com.tvtracker.exception.ShowNotFoundException;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
@@ -8,6 +9,7 @@ import com.tvtracker.storage.JsonStorageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,15 +26,15 @@ public class ShowController {
     }
 
     @GetMapping
-    public List<TrackedShow> getAll(@RequestParam(required = false) WatchStatus status) throws Exception {
+    public List<TrackedShow> getAll(@RequestParam(required = false) WatchStatus status) throws IOException {
         List<TrackedShow> all = storage.loadAll();
         if (status != null) return all.stream().filter(s -> s.watchStatus == status).toList();
         return all;
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TrackedShow> getOne(@PathVariable String id) throws Exception {
-        return storage.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public TrackedShow getOne(@PathVariable String id) throws IOException {
+        return storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
     }
 
     @GetMapping("/search")
@@ -43,7 +45,7 @@ public class ShowController {
     /** Add a show to tracking by fetching its metadata from external API */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PostMapping
-    public TrackedShow addShow(@RequestBody AddShowRequest req) throws Exception {
+    public TrackedShow addShow(@RequestBody AddShowRequest req) throws IOException {
         TrackedShow show = metadata.fetchDetails(req.tmdbId(), req.tvmazeId());
         show.id = UUID.randomUUID().toString();
         show.watchStatus = WatchStatus.NOT_WATCHED;
@@ -51,103 +53,86 @@ public class ShowController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) throws Exception {
-        return storage.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    public ResponseEntity<Void> delete(@PathVariable String id) throws IOException {
+        if (!storage.delete(id)) throw new ShowNotFoundException(id);
+        return ResponseEntity.noContent().build();
     }
 
     /** Update watch status manually (e.g. mark as DROPPED) */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/status")
-    public ResponseEntity<TrackedShow> updateStatus(@PathVariable String id, @RequestBody StatusUpdate body) throws Exception {
-        return storage.findById(id).map(show -> {
-            show.watchStatus = body.status();
-            try { return ResponseEntity.ok(storage.save(show)); }
-            catch (Exception e) { throw new RuntimeException(e); }
-        }).orElse(ResponseEntity.notFound().build());
+    public TrackedShow updateStatus(@PathVariable String id, @RequestBody StatusUpdate body) throws IOException {
+        TrackedShow show = storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
+        show.watchStatus = body.status();
+        return storage.save(show);
     }
 
     /** Toggle watched state for a specific episode */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/seasons/{season}/episodes/{episode}")
-    public ResponseEntity<TrackedShow> toggleEpisode(
+    public TrackedShow toggleEpisode(
             @PathVariable String id,
             @PathVariable int season,
             @PathVariable int episode,
-            @RequestBody EpisodeToggle body) throws Exception {
+            @RequestBody EpisodeToggle body) throws IOException {
 
-        return storage.findById(id).map(show -> {
-            show.seasons.stream()
-                .filter(s -> s.number == season).findFirst()
-                .flatMap(s -> s.episodes.stream().filter(e -> e.number == episode).findFirst())
-                .ifPresent(ep -> ep.watched = body.watched());
-            show.recalculateStatus();
-            try { return ResponseEntity.ok(storage.save(show)); }
-            catch (Exception e) { throw new RuntimeException(e); }
-        }).orElse(ResponseEntity.notFound().build());
+        TrackedShow show = storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
+        show.seasons.stream()
+            .filter(s -> s.number == season).findFirst()
+            .flatMap(s -> s.episodes.stream().filter(e -> e.number == episode).findFirst())
+            .ifPresent(ep -> ep.watched = body.watched());
+        show.recalculateStatus();
+        return storage.save(show);
     }
 
     /** Toggle all episodes in a season */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/seasons/{season}")
-    public ResponseEntity<TrackedShow> toggleSeason(
+    public TrackedShow toggleSeason(
             @PathVariable String id,
             @PathVariable int season,
-            @RequestBody EpisodeToggle body) throws Exception {
+            @RequestBody EpisodeToggle body) throws IOException {
 
-        return storage.findById(id).map(show -> {
-            show.seasons.stream().filter(s -> s.number == season).findFirst()
-                .ifPresent(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
-            show.recalculateStatus();
-            try { return ResponseEntity.ok(storage.save(show)); }
-            catch (Exception e) { throw new RuntimeException(e); }
-        }).orElse(ResponseEntity.notFound().build());
+        TrackedShow show = storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
+        show.seasons.stream().filter(s -> s.number == season).findFirst()
+            .ifPresent(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
+        show.recalculateStatus();
+        return storage.save(show);
     }
 
     /** Toggle all episodes across every season */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PatchMapping("/{id}/watched")
-    public ResponseEntity<TrackedShow> toggleAllWatched(
+    public TrackedShow toggleAllWatched(
             @PathVariable String id,
-            @RequestBody EpisodeToggle body) throws Exception {
+            @RequestBody EpisodeToggle body) throws IOException {
 
-        return storage.findById(id).map(show -> {
-            show.seasons.forEach(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
-            show.recalculateStatus();
-            try { return ResponseEntity.ok(storage.save(show)); }
-            catch (Exception e) { throw new RuntimeException(e); }
-        }).orElse(ResponseEntity.notFound().build());
+        TrackedShow show = storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
+        show.seasons.forEach(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
+        show.recalculateStatus();
+        return storage.save(show);
     }
 
     /** Persist a new display order given an ordered list of show IDs */
     @PutMapping("/reorder")
-    public ResponseEntity<Void> reorder(@RequestBody List<String> orderedIds) throws Exception {
+    public ResponseEntity<Void> reorder(@RequestBody List<String> orderedIds) throws IOException {
         storage.reorder(orderedIds);
         return ResponseEntity.noContent().build();
     }
 
-    /** Re-fetch metadata from API, preserve watched state and watch status */
-    @PostMapping("/{id}/refresh")
-    public ResponseEntity<TrackedShow> refreshShow(@PathVariable String id) throws Exception {
-        return storage.findById(id).map(existing -> {
-            try {
-                TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
-                fresh.id = existing.id;
-                fresh.watchStatus = existing.watchStatus;
-                // Overlay watched flags by season+episode number
-                for (var existingSeason : existing.seasons) {
-                    fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()
-                        .ifPresent(freshSeason -> {
-                            for (var existingEp : existingSeason.episodes) {
-                                freshSeason.episodes.stream().filter(e -> e.number == existingEp.number).findFirst()
-                                    .ifPresent(freshEp -> freshEp.watched = existingEp.watched);
-                            }
-                        });
-                }
-                return ResponseEntity.ok(storage.save(fresh));
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }).orElse(ResponseEntity.notFound().build());
+   @PostMapping("/{id}/refresh")
+    public TrackedShow refreshShow(@PathVariable String id) throws IOException {
+        TrackedShow existing = storage.findById(id).orElseThrow(() -> new ShowNotFoundException(id));
+        TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
+        fresh.id = existing.id;
+        fresh.watchStatus = existing.watchStatus;
+        for (var existingSeason : existing.seasons) {
+            fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()
+                .ifPresent(freshSeason -> existingSeason.episodes.forEach(existingEp ->
+                    freshSeason.episodes.stream().filter(e -> e.number == existingEp.number).findFirst()
+                        .ifPresent(freshEp -> freshEp.watched = existingEp.watched)));
+        }
+        return storage.save(fresh);
     }
 
     private record AddShowRequest(Long tmdbId, Long tvmazeId) {}
