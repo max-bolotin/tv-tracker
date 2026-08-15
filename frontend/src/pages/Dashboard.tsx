@@ -35,6 +35,9 @@ export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
   const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>('POPULAR');
   const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
+  const popularRef = useRef<HTMLDivElement | null>(null);
+  const [popularRows, setPopularRows] = useState(0); // number of rows currently requested
+  const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -64,7 +67,24 @@ export function Dashboard() {
   }, [currentUser]);
 
   useEffect(() => {
-    api.getPopular().then(setPopularShows).catch(() => setPopularShows([]));
+    // Compute columns based on container width and request full rows (>= MIN_POPULAR)
+    function computeAndFetch() {
+      const container = popularRef.current || document.documentElement;
+      const width = container.getBoundingClientRect().width || window.innerWidth;
+      // Use min card width matching CSS (160px) + gap (approx 16px)
+      const minCard = 160 + 16;
+      const cols = Math.max(1, Math.floor(width / minCard));
+      const rowsNeeded = Math.max(1, Math.ceil(MIN_POPULAR / cols));
+      const rows = Math.max(rowsNeeded, popularRows || 0);
+      const limit = rows * cols;
+      setPopularRows(rows);
+      api.getPopular(limit).then(setPopularShows).catch(() => setPopularShows([]));
+    }
+
+    computeAndFetch();
+    const onResize = () => computeAndFetch();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
@@ -210,9 +230,17 @@ export function Dashboard() {
     ...allShows.map(s => s.tvmazeId).filter(Boolean),
   ]), [allShows]);
 
-  const isTracked = (r: ShowSearchResult) =>
-    (r.tmdbId != null && trackedIds.has(r.tmdbId)) ||
-    (r.tvmazeId != null && trackedIds.has(r.tvmazeId));
+  const isTracked = (r: ShowSearchResult | null) => {
+    if (!r) return false;
+    if (r.tmdbId != null && trackedIds.has(r.tmdbId)) return true;
+    if (r.tvmazeId != null && trackedIds.has(r.tvmazeId)) return true;
+    // Fallback: title equality (case-insensitive) to catch mismatched IDs
+    const title = r.title?.toLowerCase().trim();
+    if (title) {
+      return allShows.some(s => s.title && s.title.toLowerCase().trim() === title);
+    }
+    return false;
+  };
 
   const handleSignIn = (targetTab?: string) => {
     // Remember desired tab after login (frontend-only). Backend redirects to frontend root.
@@ -268,7 +296,7 @@ export function Dashboard() {
           ))}
         </div>
 
-        <div className="popular-grid">
+        <div className="popular-grid" ref={el => { popularRef.current = el; }}>
           {popularShows.map(p => (
             <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
               {p.posterPath && <img src={p.posterPath} alt={p.title} />}
@@ -276,8 +304,39 @@ export function Dashboard() {
             </div>
           ))}
         </div>
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button className="auth-button" onClick={() => {
+            // add one more row
+            const container = popularRef.current || document.documentElement;
+            const width = container.getBoundingClientRect().width || window.innerWidth;
+            const minCard = 160 + 16;
+            const cols = Math.max(1, Math.floor(width / minCard));
+            const nextRows = Math.max(1, popularRows) + 1;
+            const nextLimit = nextRows * cols;
+            setPopularRows(nextRows);
+            api.getPopular(nextLimit).then(setPopularShows).catch(() => setPopularShows([]));
+          }}>Explore more</button>
+        </div>
 
         <ScrollToTop />
+
+        {selected && (
+          <ShowDetail
+            show={selected}
+            onClose={handleCloseModal}
+            onUpdate={handleUpdate}
+          />
+        )}
+
+        {preview && (
+          <SearchPreview
+            result={preview}
+            onClose={handleCloseModal}
+            onTrack={handleAdd}
+            isTracked={isTracked(preview)}
+          />
+        )}
+
       </div>
     );
   }
@@ -334,6 +393,23 @@ export function Dashboard() {
             <p>Use your Google account to access your personal TV library.</p>
             <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue with Google</button>
           </div>
+        )}
+
+        {selected && (
+          <ShowDetail
+            show={selected}
+            onClose={handleCloseModal}
+            onUpdate={handleUpdate}
+          />
+        )}
+
+        {preview && (
+          <SearchPreview
+            result={preview}
+            onClose={handleCloseModal}
+            onTrack={handleAdd}
+            isTracked={isTracked(preview)}
+          />
         )}
       </div>
     );
