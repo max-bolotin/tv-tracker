@@ -7,3 +7,5 @@ data/
 frontend/node_modules/
 frontend/dist/
 .env
+# Ignore Google client secret files
+client_secret_*.json
