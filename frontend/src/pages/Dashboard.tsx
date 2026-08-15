@@ -118,6 +118,13 @@ export function Dashboard() {
   }, [allShows, tab]);
 
   const handleAdd = async (result: ShowSearchResult) => {
+    if (!currentUser) {
+      // require login before tracking — remember desired tab and open OAuth
+      localStorage.setItem('postLoginTab', 'ALL');
+      handleSignIn('ALL');
+      return;
+    }
+
     try {
       localWrites.current++;
       const show = await api.addShow(result.tmdbId, result.tvmazeId);
@@ -315,7 +322,7 @@ export function Dashboard() {
         {(tab as any) === 'POPULAR' ? (
           <div className="popular-grid">
             {popularShows.map(p => (
-              <div key={p.tmdbId} className="popular-card">
+              <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
                 {p.posterPath && <img src={p.posterPath} alt={p.title} />}
                 <div className="popular-title">{p.title}</div>
               </div>
