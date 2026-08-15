@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import type { TrackedShow, WatchStatus } from '../types';
+import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 import { DraggableGrid } from '../components/DraggableGrid';
 import { ShowDetail } from '../components/ShowDetail';
 import { SearchBar, type SearchBarHandle } from '../components/SearchBar';
+import { SearchPreview } from '../components/SearchPreview';
 import { ScrollToTop } from '../components/ScrollToTop';
 import { RefreshButton } from '../components/RefreshButton';
-import type { ShowSearchResult } from '../types';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -33,10 +34,10 @@ export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
   const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
   const [selected, setSelected] = useState<TrackedShow | null>(null);
+  const [preview, setPreview] = useState<ShowSearchResult | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const localWrites = useRef(0);
 
   useEffect(() => {
@@ -51,6 +52,33 @@ export function Dashboard() {
     });
     return () => es.close();
   }, []);
+
+  // Push a history entry when a modal opens, pop it to close on back gesture/button
+  const openModal = useCallback((open: () => void) => {
+    open();
+    history.pushState({ modal: true }, '');
+  }, []);
+
+  const closeAll = useCallback(() => {
+    setSelected(null);
+    setPreview(null);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => closeAll();
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [closeAll]);
+
+  const handleSelectShow = (show: TrackedShow) => openModal(() => setSelected(show));
+  const handlePreview = (result: ShowSearchResult) => openModal(() => setPreview(result));
+
+  const handleCloseModal = () => {
+    // If we pushed a history entry, go back (which fires popstate → closeAll)
+    // If history state doesn't have modal flag (e.g. direct URL), just close
+    if (history.state?.modal) history.back();
+    else closeAll();
+  };
 
   const visibleShows = useMemo(
     () => tab === 'ALL' ? allShows : allShows.filter(s => s.watchStatus === tab),
@@ -91,7 +119,6 @@ export function Dashboard() {
 
   const handleReorder = useCallback((reordered: TrackedShow[]) => {
     setAllShows(reordered);
-    // Debounce the API call — only persist after dragging stops for 400ms
     if (reorderTimer.current) clearTimeout(reorderTimer.current);
     reorderTimer.current = setTimeout(() => {
       localWrites.current++;
@@ -142,12 +169,20 @@ export function Dashboard() {
       setAllShows(prev => prev.map(s => s.id === id ? updated : s));
       if (selected?.id === id) setSelected(updated);
     } catch {
-      // No API data — fall back to searching by title
       if (show) searchBarRef.current?.triggerSearch(show.title);
     }
   };
 
-  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: setSelected, onDelete: handleDelete, onRefresh: handleRefreshShow };
+  const trackedIds = useMemo(() => new Set([
+    ...allShows.map(s => s.tmdbId).filter(Boolean),
+    ...allShows.map(s => s.tvmazeId).filter(Boolean),
+  ]), [allShows]);
+
+  const isTracked = (r: ShowSearchResult) =>
+    (r.tmdbId != null && trackedIds.has(r.tmdbId)) ||
+    (r.tvmazeId != null && trackedIds.has(r.tvmazeId));
+
+  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: handleSelectShow, onDelete: handleDelete, onRefresh: handleRefreshShow };
 
   return (
     <div className="dashboard">
@@ -161,7 +196,7 @@ export function Dashboard() {
         </nav>
       </header>
 
-      <SearchBar ref={searchBarRef} onAdd={handleAdd} />
+      <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
 
       <div className="tabs">
         {TABS.map(t => (
@@ -194,8 +229,17 @@ export function Dashboard() {
       {selected && (
         <ShowDetail
           show={selected}
-          onClose={() => setSelected(null)}
+          onClose={handleCloseModal}
           onUpdate={handleUpdate}
+        />
+      )}
+
+      {preview && (
+        <SearchPreview
+          result={preview}
+          onClose={handleCloseModal}
+          onTrack={handleAdd}
+          isTracked={isTracked(preview)}
         />
       )}
 

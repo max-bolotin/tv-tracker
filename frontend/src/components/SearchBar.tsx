@@ -4,13 +4,14 @@ import { api } from '../api/client';
 
 interface Props {
   onAdd: (result: ShowSearchResult) => void;
+  onPreview: (result: ShowSearchResult) => void;
 }
 
 export interface SearchBarHandle {
   triggerSearch: (query: string) => void;
 }
 
-export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({ onAdd }, ref) {
+export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({ onAdd, onPreview }, ref) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ShowSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,13 +69,13 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
       {results.length > 0 && (
         <ul className="search-results">
           {results.map(r => (
-            <li key={r.tmdbId ?? r.tvmazeId}>
+            <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { dismiss(); onPreview(r); }}>
               {r.posterPath && <img src={r.posterPath} alt={r.title} />}
               <div>
                 <strong>{r.title}</strong>
                 <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
               </div>
-              <button onClick={() => { onAdd(r); dismiss(); setQuery(''); }}>
+              <button onClick={e => { e.stopPropagation(); onAdd(r); dismiss(); setQuery(''); }}>
                 + Track
               </button>
             </li>

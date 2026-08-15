@@ -30,7 +30,8 @@ body {
 .header-nav button:hover { background: #2a2a3a; }
 
 /* Dashboard */
-.dashboard { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+.dashboard { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+@media (min-width: 768px) { .dashboard { padding: 1.5rem 2rem; } }
 
 /* Search */
 .search-bar { margin-bottom: 1.5rem; position: relative; }
@@ -72,7 +73,9 @@ body {
   gap: 0.75rem;
   padding: 0.6rem 1rem;
   border-bottom: 1px solid #2a2a3a;
+  cursor: pointer;
 }
+.search-results li:hover { background: #22223a; }
 .search-results li:last-child { border-bottom: none; }
 .search-results img { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; }
 .search-results li > div { flex: 1; }
@@ -105,9 +108,11 @@ body {
 /* Show Grid */
 .show-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
 }
+@media (min-width: 540px)  { .show-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 768px)  { .show-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
 .empty { color: #555; text-align: center; padding: 3rem; grid-column: 1/-1; }
 
 /* Show Card */
