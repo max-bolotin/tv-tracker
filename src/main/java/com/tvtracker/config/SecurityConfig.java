@@ -38,7 +38,8 @@ public class SecurityConfig {
                     "/error",
                     "/login",
                     "/oauth2/**",
-                    "/login/oauth2/**"
+                    "/login/oauth2/**",
+                    "/api/popular"
             ).permitAll();
 
             if (googleConfigured) {

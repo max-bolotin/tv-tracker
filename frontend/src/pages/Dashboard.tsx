@@ -21,8 +21,9 @@ const STATUS_LABELS: Record<WatchStatus, string> = {
   DROPPED:      'Dropped',
 };
 
-const TABS: { label: string; value: WatchStatus | 'ALL' }[] = [
-  { label: 'All',          value: 'ALL' },
+const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
+  { label: 'Trending now',  value: 'POPULAR' },
+  { label: 'My Shows (All)', value: 'ALL' },
   { label: 'Watching Now', value: 'WATCHING_NOW' },
   { label: 'Not Watched',  value: 'NOT_WATCHED' },
   { label: 'Up to Date',   value: 'UP_TO_DATE' },
@@ -32,7 +33,8 @@ const TABS: { label: string; value: WatchStatus | 'ALL' }[] = [
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
-  const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
+  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>('POPULAR');
+  const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -44,7 +46,14 @@ export function Dashboard() {
 
   useEffect(() => {
     api.getMe()
-      .then(setCurrentUser)
+      .then(user => {
+        setCurrentUser(user);
+        const post = localStorage.getItem('postLoginTab');
+        if (user && post) {
+          setTab(post as any);
+          localStorage.removeItem('postLoginTab');
+        }
+      })
       .catch(() => setCurrentUser(null))
       .finally(() => setAuthLoading(false));
   }, []);
@@ -53,6 +62,10 @@ export function Dashboard() {
     if (!currentUser) return;
     api.getShows().then(setAllShows);
   }, [currentUser]);
+
+  useEffect(() => {
+    api.getPopular().then(setPopularShows).catch(() => setPopularShows([]));
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -91,10 +104,11 @@ export function Dashboard() {
     else closeAll();
   };
 
-  const visibleShows = useMemo(
-    () => tab === 'ALL' ? allShows : allShows.filter(s => s.watchStatus === tab),
-    [allShows, tab],
-  );
+  const visibleShows = useMemo(() => {
+    if (tab === 'ALL') return allShows;
+    if (tab === 'POPULAR') return [];
+    return allShows.filter(s => s.watchStatus === tab as WatchStatus);
+  }, [allShows, tab]);
 
   const groups = useMemo(() => {
     if (tab !== 'ALL') return null;
@@ -193,8 +207,9 @@ export function Dashboard() {
     (r.tmdbId != null && trackedIds.has(r.tmdbId)) ||
     (r.tvmazeId != null && trackedIds.has(r.tvmazeId));
 
-  const handleSignIn = () => {
-    // In dev, navigate directly to backend to avoid Vite dev-server navigation proxy issues.
+  const handleSignIn = (targetTab?: string) => {
+    // Remember desired tab after login (frontend-only). Backend redirects to frontend root.
+    if (targetTab) localStorage.setItem('postLoginTab', targetTab);
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const backend = isLocal ? 'http://localhost:8080' : '';
     window.location.href = backend + '/oauth2/authorization/google';
@@ -207,6 +222,58 @@ export function Dashboard() {
   };
 
   const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: handleSelectShow, onDelete: handleDelete, onRefresh: handleRefreshShow };
+
+  if ((tab as any) === 'POPULAR') {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+          <nav className="header-nav">
+            <button onClick={() => handleExport()}>Export</button>
+            <button onClick={() => importRef.current?.click()}>Import</button>
+            <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
+            <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
+            {currentUser ? (
+              <>
+                <div className="user-pill">
+                  {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
+                  <span>{currentUser.name}</span>
+                </div>
+                <button onClick={() => handleSignOut()}>Log out</button>
+              </>
+            ) : (
+              <button onClick={() => handleSignIn()}>Sign in with Google</button>
+            )}
+          </nav>
+        </header>
+
+        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+
+        <div className="tabs">
+          {TABS.map(t => (
+            <button
+              key={t.value}
+              className={tab === t.value ? 'tab active' : 'tab'}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="popular-grid">
+          {popularShows.map(p => (
+            <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
+              {p.posterPath && <img src={p.posterPath} alt={p.title} />}
+              <div className="popular-title">{p.title}</div>
+            </div>
+          ))}
+        </div>
+
+        <ScrollToTop />
+      </div>
+    );
+  }
 
   if (authLoading) {
     return (
@@ -227,14 +294,40 @@ export function Dashboard() {
         <header className="app-header">
           <h1>📺 TV Tracker</h1>
           <nav className="header-nav">
-            <button onClick={handleSignIn}>Sign in with Google</button>
+            <button onClick={() => handleSignIn()}>Sign in with Google</button>
           </nav>
         </header>
-        <div className="auth-gate">
-          <h2>Sign in to continue</h2>
-          <p>Use your Google account to access your personal TV library.</p>
-          <button className="auth-button" onClick={handleSignIn}>Continue with Google</button>
+
+        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+
+        <div className="tabs">
+          {TABS.map(t => (
+            <button
+              key={t.value}
+              className={tab === t.value ? 'tab active' : 'tab'}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+
+        {(tab as any) === 'POPULAR' ? (
+          <div className="popular-grid">
+            {popularShows.map(p => (
+              <div key={p.tmdbId} className="popular-card">
+                {p.posterPath && <img src={p.posterPath} alt={p.title} />}
+                <div className="popular-title">{p.title}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="auth-gate">
+            <h2>Sign in to continue</h2>
+            <p>Use your Google account to access your personal TV library.</p>
+            <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue with Google</button>
+          </div>
+        )}
       </div>
     );
   }

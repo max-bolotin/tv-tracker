@@ -363,6 +363,18 @@ body {
   font-weight: 400;
 }
 
+/* Popular grid */
+.popular-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 540px)  { .popular-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 768px)  { .popular-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
+.popular-card { background: #1a1a24; border-radius: 10px; overflow: hidden; border: 1px solid #2a2a3a; cursor: pointer; }
+.popular-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+.popular-title { padding: 0.6rem; font-size: 0.9rem; }
+
 /* All-tab section dividers */
 .section-divider {
   border: none;

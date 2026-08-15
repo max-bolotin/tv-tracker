@@ -26,6 +26,11 @@ public class ShowController {
         this.metadata = metadata;
     }
 
+    @GetMapping("/popular")
+    public List<com.tvtracker.model.ShowSearchResult> popular() {
+        return metadata.fetchPopular(20);
+    }
+
     @GetMapping
     public List<TrackedShow> getAll(@RequestParam(required = false) WatchStatus status) throws IOException {
         String userId = CurrentUserContext.currentUserId();

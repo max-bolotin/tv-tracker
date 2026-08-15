@@ -71,6 +71,8 @@ export const api = {
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),
 
+  getPopular: (limit = 20) => req<ShowSearchResult[]>(`/popular?limit=${limit}`),
+
   refreshShow: (id: string) => req<TrackedShow>(`/shows/${id}/refresh`, { method: 'POST' }),
 
   reorder: (orderedIds: string[]) =>

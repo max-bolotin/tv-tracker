@@ -48,4 +48,11 @@ public class MetadataService {
         try { return tvmaze.fetchRecentlyUpdatedIds(); } catch (Exception ignored) {}
         return List.of();
     }
+
+    public List<ShowSearchResult> fetchPopular(int limit) {
+        if (tmdb.isConfigured()) {
+            try { return tmdb.fetchPopular(limit); } catch (Exception ignored) {}
+        }
+        return List.of();
+    }
 }

@@ -133,6 +133,30 @@ public class TmdbProvider implements MetadataProvider {
         }
     }
 
+    public List<ShowSearchResult> fetchPopular(int limit) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/tv/popular")
+                    .queryParam("api_key", apiKey)
+                    .queryParam("page", 1)
+                    .toUriString();
+            JsonNode root = get(url);
+            List<ShowSearchResult> results = new ArrayList<>();
+            for (JsonNode item : root.path("results")) {
+                if (results.size() >= limit) break;
+                ShowSearchResult r = new ShowSearchResult();
+                r.tmdbId = item.path("id").asLong();
+                r.title = item.path("name").asText();
+                r.overview = item.path("overview").asText();
+                String poster = item.path("poster_path").asText(null);
+                r.posterPath = poster != null ? imageBaseUrl + poster : null;
+                results.add(r);
+            }
+            return results;
+        } catch (Exception e) {
+            throw new RuntimeException("TMDB fetchPopular failed", e);
+        }
+    }
+
     private JsonNode get(String url) throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
