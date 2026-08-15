@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 
@@ -39,16 +39,6 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
 
   const dismiss = () => setResults([]);
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        dismiss();
-      }
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
-  }, []);
-
   return (
     <div className="search-bar" ref={containerRef}>
       <div className="search-input-row">
@@ -67,20 +57,23 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
         </button>
       </div>
       {results.length > 0 && (
-        <ul className="search-results">
-          {results.map(r => (
-            <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { dismiss(); onPreview(r); }}>
-              {r.posterPath && <img src={r.posterPath} alt={r.title} />}
-              <div>
-                <strong>{r.title}</strong>
-                <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
-              </div>
-              <button onClick={e => { e.stopPropagation(); onAdd(r); dismiss(); setQuery(''); }}>
-                + Track
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="search-backdrop" onClick={dismiss} />
+          <ul className="search-results">
+            {results.map(r => (
+              <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { dismiss(); onPreview(r); }}>
+                {r.posterPath && <img src={r.posterPath} alt={r.title} />}
+                <div>
+                  <strong>{r.title}</strong>
+                  <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
+                </div>
+                <button onClick={e => { e.stopPropagation(); onAdd(r); dismiss(); setQuery(''); }}>
+                  + Track
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

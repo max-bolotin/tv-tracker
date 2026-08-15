@@ -55,6 +55,13 @@ body {
   font-size: 1rem;
 }
 .search-input-row button:hover { background: #4a4ae0; }
+.search-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 90;
+}
+
 .search-results {
   position: absolute;
   top: 100%;
