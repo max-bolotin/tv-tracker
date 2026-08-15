@@ -27,8 +27,8 @@ public class ShowController {
     }
 
     @GetMapping("/popular")
-    public List<com.tvtracker.model.ShowSearchResult> popular() {
-        return metadata.fetchPopular(20);
+    public List<com.tvtracker.model.ShowSearchResult> popular(@RequestParam(required = false, defaultValue = "20") int limit) {
+        return metadata.fetchPopular(limit);
     }
 
     @GetMapping
