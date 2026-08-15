@@ -9,3 +9,6 @@ frontend/dist/
 .env
 # Ignore Google client secret files
 client_secret_*.json
+
+# Local Spring profile file containing credentials (do NOT commit)
+src/main/resources/application-local.properties

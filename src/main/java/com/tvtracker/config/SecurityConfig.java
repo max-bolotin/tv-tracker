@@ -22,8 +22,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        boolean googleConfigured = StringUtils.hasText(env.getProperty("spring.security.oauth2.client.registration.google.client-id"))
-                && StringUtils.hasText(env.getProperty("spring.security.oauth2.client.registration.google.client-secret"));
+        boolean googleConfigured = StringUtils.hasText(env.getProperty("GOOGLE_CLIENT_ID"))
+                && StringUtils.hasText(env.getProperty("GOOGLE_CLIENT_SECRET"));
 
         http.csrf(AbstractHttpConfigurer::disable);
 
@@ -51,10 +51,28 @@ public class SecurityConfig {
         });
 
         if (googleConfigured) {
-            http.oauth2Login(oauth2 -> oauth2.defaultSuccessUrl("/#dashboard", true));
+            final String frontendUrlCandidate = env.getProperty("app.frontend.url");
+            final String frontendUrl = StringUtils.hasText(frontendUrlCandidate) ? frontendUrlCandidate : env.getProperty("FRONTEND_URL");
+            String computedSuccessUrl;
+            if (StringUtils.hasText(frontendUrl)) {
+                if (frontendUrl.contains("localhost")) {
+                    // Bust any cached production index.html when developing with Vite
+                    String ts = String.valueOf(System.currentTimeMillis());
+                    computedSuccessUrl = frontendUrl.endsWith("/")
+                            ? frontendUrl + "?_ts=" + ts + "#dashboard"
+                            : frontendUrl + "/?_ts=" + ts + "#dashboard";
+                } else {
+                    computedSuccessUrl = frontendUrl.endsWith("/") ? frontendUrl + "#dashboard" : frontendUrl + "/#dashboard";
+                }
+            } else {
+                computedSuccessUrl = "/#dashboard";
+            }
+            final String successUrl = computedSuccessUrl;
+
+            http.oauth2Login(oauth2 -> oauth2.defaultSuccessUrl(successUrl, true));
             http.logout(logout -> logout
                     .logoutUrl("/logout")
-                    .logoutSuccessUrl("/")
+                    .logoutSuccessUrl(StringUtils.hasText(frontendUrl) ? frontendUrl : "/")
                     .invalidateHttpSession(true)
                     .clearAuthentication(true)
                     .deleteCookies("JSESSIONID"));
@@ -63,7 +81,7 @@ public class SecurityConfig {
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
                     return;
                 }
-                response.sendRedirect("/");
+                response.sendRedirect(StringUtils.hasText(frontendUrl) ? frontendUrl : "/");
             }));
         } else {
             http.httpBasic(AbstractHttpConfigurer::disable);

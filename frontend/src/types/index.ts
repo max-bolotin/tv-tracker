@@ -37,3 +37,10 @@ export interface ShowSearchResult {
   totalSeasons: number;
   productionStatus?: ProductionStatus;
 }
+
+export interface CurrentUser {
+  id: string;
+  name: string;
+  email?: string | null;
+  picture?: string | null;
+}

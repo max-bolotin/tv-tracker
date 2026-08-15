@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import type { TrackedShow, WatchStatus } from '../types';
+import type { TrackedShow, WatchStatus, CurrentUser } from '../types';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 import { DraggableGrid } from '../components/DraggableGrid';
@@ -35,23 +35,34 @@ export function Dashboard() {
   const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
 
   useEffect(() => {
-    api.getShows().then(setAllShows);
+    api.getMe()
+      .then(setCurrentUser)
+      .catch(() => setCurrentUser(null))
+      .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
+    api.getShows().then(setAllShows);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
     const es = new EventSource('/api/events');
     es.addEventListener('data-changed', () => {
       if (localWrites.current > 0) { localWrites.current--; return; }
       api.getShows().then(setAllShows);
     });
     return () => es.close();
-  }, []);
+  }, [currentUser]);
 
   // Push a history entry when a modal opens, pop it to close on back gesture/button
   const openModal = useCallback((open: () => void) => {
@@ -182,7 +193,51 @@ export function Dashboard() {
     (r.tmdbId != null && trackedIds.has(r.tmdbId)) ||
     (r.tvmazeId != null && trackedIds.has(r.tvmazeId));
 
+  const handleSignIn = () => {
+    // In dev, navigate directly to backend to avoid Vite dev-server navigation proxy issues.
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const backend = isLocal ? 'http://localhost:8080' : '';
+    window.location.href = backend + '/oauth2/authorization/google';
+  };
+
+  const handleSignOut = async () => {
+    await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    setCurrentUser(null);
+    setAllShows([]);
+  };
+
   const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: handleSelectShow, onDelete: handleDelete, onRefresh: handleRefreshShow };
+
+  if (authLoading) {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+        </header>
+        <div className="auth-gate">
+          <p>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+          <nav className="header-nav">
+            <button onClick={handleSignIn}>Sign in with Google</button>
+          </nav>
+        </header>
+        <div className="auth-gate">
+          <h2>Sign in to continue</h2>
+          <p>Use your Google account to access your personal TV library.</p>
+          <button className="auth-button" onClick={handleSignIn}>Continue with Google</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard">
@@ -193,6 +248,11 @@ export function Dashboard() {
           <button onClick={() => importRef.current?.click()}>Import</button>
           <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
           <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
+          <div className="user-pill">
+            {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
+            <span>{currentUser.name}</span>
+          </div>
+          <button onClick={handleSignOut}>Log out</button>
         </nav>
       </header>
 

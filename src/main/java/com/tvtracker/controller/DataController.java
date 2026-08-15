@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.model.ImportExportPayload;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.scheduler.DailyUpdateScheduler;
+import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.ImportService;
 import com.tvtracker.storage.JsonStorageService;
 import org.slf4j.Logger;
@@ -37,7 +38,8 @@ public class DataController {
 
     @GetMapping("/export")
     public ResponseEntity<byte[]> export() throws Exception {
-        List<TrackedShow> shows = storage.loadAll();
+        String userId = CurrentUserContext.currentUserId();
+        List<TrackedShow> shows = storage.loadAll(userId);
         ImportExportPayload payload = importService.toPayload(shows);
         byte[] json = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(payload);
         return ResponseEntity.ok()
@@ -48,10 +50,11 @@ public class DataController {
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ImportResult> importData(@RequestParam("file") MultipartFile file) throws Exception {
+        String userId = CurrentUserContext.currentUserId();
         log.info("Import started, file size: {} bytes", file.getSize());
         ImportExportPayload payload = mapper.readValue(file.getBytes(), ImportExportPayload.class);
         ImportService.ImportResult result = importService.resolve(payload);
-        storage.saveAll(result.shows());
+        storage.saveAll(userId, result.shows());
         log.info("Import complete: {} shows saved, {} stubs: {}",
                 result.shows().size(), result.stubTitles().size(), result.stubTitles());
         return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
