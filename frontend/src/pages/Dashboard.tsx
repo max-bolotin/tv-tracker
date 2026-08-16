@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import type { TrackedShow, WatchStatus } from '../types';
+import type { TrackedShow, WatchStatus, CurrentUser } from '../types';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 import { DraggableGrid } from '../components/DraggableGrid';
@@ -21,8 +21,9 @@ const STATUS_LABELS: Record<WatchStatus, string> = {
   DROPPED:      'Dropped',
 };
 
-const TABS: { label: string; value: WatchStatus | 'ALL' }[] = [
-  { label: 'All',          value: 'ALL' },
+const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
+  { label: 'Trending now',  value: 'POPULAR' },
+  { label: 'My Shows (All)', value: 'ALL' },
   { label: 'Watching Now', value: 'WATCHING_NOW' },
   { label: 'Not Watched',  value: 'NOT_WATCHED' },
   { label: 'Up to Date',   value: 'UP_TO_DATE' },
@@ -32,26 +33,69 @@ const TABS: { label: string; value: WatchStatus | 'ALL' }[] = [
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
-  const [tab, setTab] = useState<WatchStatus | 'ALL'>('ALL');
+  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>('POPULAR');
+  const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
+  const popularRef = useRef<HTMLDivElement | null>(null);
+  const [popularRows, setPopularRows] = useState(0); // number of rows currently requested
+  const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
 
   useEffect(() => {
-    api.getShows().then(setAllShows);
+    api.getMe()
+      .then(user => {
+        setCurrentUser(user);
+        const post = localStorage.getItem('postLoginTab');
+        if (user && post) {
+          setTab(post as any);
+          localStorage.removeItem('postLoginTab');
+        }
+      })
+      .catch(() => setCurrentUser(null))
+      .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
+    api.getShows().then(setAllShows);
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Compute columns based on container width and request full rows (>= MIN_POPULAR)
+    function computeAndFetch() {
+      const container = popularRef.current || document.documentElement;
+      const width = container.getBoundingClientRect().width || window.innerWidth;
+      // Use min card width matching CSS (160px) + gap (approx 16px)
+      const minCard = 160 + 16;
+      const cols = Math.max(1, Math.floor(width / minCard));
+      const rowsNeeded = Math.max(1, Math.ceil(MIN_POPULAR / cols));
+      const rows = Math.max(rowsNeeded, popularRows || 0);
+      const limit = rows * cols;
+      setPopularRows(rows);
+      api.getPopular(limit).then(setPopularShows).catch(() => setPopularShows([]));
+    }
+
+    computeAndFetch();
+    const onResize = () => computeAndFetch();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
     const es = new EventSource('/api/events');
     es.addEventListener('data-changed', () => {
       if (localWrites.current > 0) { localWrites.current--; return; }
       api.getShows().then(setAllShows);
     });
     return () => es.close();
-  }, []);
+  }, [currentUser]);
 
   // Push a history entry when a modal opens, pop it to close on back gesture/button
   const openModal = useCallback((open: () => void) => {
@@ -80,10 +124,11 @@ export function Dashboard() {
     else closeAll();
   };
 
-  const visibleShows = useMemo(
-    () => tab === 'ALL' ? allShows : allShows.filter(s => s.watchStatus === tab),
-    [allShows, tab],
-  );
+  const visibleShows = useMemo(() => {
+    if (tab === 'ALL') return allShows;
+    if (tab === 'POPULAR') return [];
+    return allShows.filter(s => s.watchStatus === tab as WatchStatus);
+  }, [allShows, tab]);
 
   const groups = useMemo(() => {
     if (tab !== 'ALL') return null;
@@ -93,6 +138,13 @@ export function Dashboard() {
   }, [allShows, tab]);
 
   const handleAdd = async (result: ShowSearchResult) => {
+    if (!currentUser) {
+      // require login before tracking — remember desired tab and open OAuth
+      localStorage.setItem('postLoginTab', 'ALL');
+      handleSignIn('ALL');
+      return;
+    }
+
     try {
       localWrites.current++;
       const show = await api.addShow(result.tmdbId, result.tvmazeId);
@@ -178,11 +230,190 @@ export function Dashboard() {
     ...allShows.map(s => s.tvmazeId).filter(Boolean),
   ]), [allShows]);
 
-  const isTracked = (r: ShowSearchResult) =>
-    (r.tmdbId != null && trackedIds.has(r.tmdbId)) ||
-    (r.tvmazeId != null && trackedIds.has(r.tvmazeId));
+  const isTracked = (r: ShowSearchResult | null) => {
+    if (!r) return false;
+    if (r.tmdbId != null && trackedIds.has(r.tmdbId)) return true;
+    if (r.tvmazeId != null && trackedIds.has(r.tvmazeId)) return true;
+    // Fallback: title equality (case-insensitive) to catch mismatched IDs
+    const title = r.title?.toLowerCase().trim();
+    if (title) {
+      return allShows.some(s => s.title && s.title.toLowerCase().trim() === title);
+    }
+    return false;
+  };
+
+  const handleSignIn = (targetTab?: string) => {
+    // Remember desired tab after login (frontend-only). Backend redirects to frontend root.
+    if (targetTab) localStorage.setItem('postLoginTab', targetTab);
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const backend = isLocal ? 'http://localhost:8080' : '';
+    window.location.href = backend + '/oauth2/authorization/google';
+  };
+
+  const handleSignOut = async () => {
+    await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    setCurrentUser(null);
+    setAllShows([]);
+  };
 
   const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: handleSelectShow, onDelete: handleDelete, onRefresh: handleRefreshShow };
+
+  if ((tab as any) === 'POPULAR') {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+          <nav className="header-nav">
+            <button onClick={() => handleExport()}>Export</button>
+            <button onClick={() => importRef.current?.click()}>Import</button>
+            <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
+            <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
+            {currentUser ? (
+              <>
+                <div className="user-pill">
+                  {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
+                  <span>{currentUser.name}</span>
+                </div>
+                <button onClick={() => handleSignOut()}>Log out</button>
+              </>
+            ) : (
+              <button onClick={() => handleSignIn()}>Sign in with Google</button>
+            )}
+          </nav>
+        </header>
+
+        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+
+        <div className="tabs">
+          {TABS.map(t => (
+            <button
+              key={t.value}
+              className={tab === t.value ? 'tab active' : 'tab'}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="popular-grid" ref={el => { popularRef.current = el; }}>
+          {popularShows.map(p => (
+            <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
+              {p.posterPath && <img src={p.posterPath} alt={p.title} />}
+              <div className="popular-title">{p.title}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <button className="auth-button" onClick={() => {
+            // add one more row
+            const container = popularRef.current || document.documentElement;
+            const width = container.getBoundingClientRect().width || window.innerWidth;
+            const minCard = 160 + 16;
+            const cols = Math.max(1, Math.floor(width / minCard));
+            const nextRows = Math.max(1, popularRows) + 1;
+            const nextLimit = nextRows * cols;
+            setPopularRows(nextRows);
+            api.getPopular(nextLimit).then(setPopularShows).catch(() => setPopularShows([]));
+          }}>Explore more</button>
+        </div>
+
+        <ScrollToTop />
+
+        {selected && (
+          <ShowDetail
+            show={selected}
+            onClose={handleCloseModal}
+            onUpdate={handleUpdate}
+          />
+        )}
+
+        {preview && (
+          <SearchPreview
+            result={preview}
+            onClose={handleCloseModal}
+            onTrack={handleAdd}
+            isTracked={isTracked(preview)}
+          />
+        )}
+
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+        </header>
+        <div className="auth-gate">
+          <p>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+          <nav className="header-nav">
+            <button onClick={() => handleSignIn()}>Sign in with Google</button>
+          </nav>
+        </header>
+
+        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+
+        <div className="tabs">
+          {TABS.map(t => (
+            <button
+              key={t.value}
+              className={tab === t.value ? 'tab active' : 'tab'}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {(tab as any) === 'POPULAR' ? (
+          <div className="popular-grid">
+            {popularShows.map(p => (
+              <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
+                {p.posterPath && <img src={p.posterPath} alt={p.title} />}
+                <div className="popular-title">{p.title}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="auth-gate">
+            <h2>Sign in to continue</h2>
+            <p>Use your Google account to access your personal TV library.</p>
+            <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue with Google</button>
+          </div>
+        )}
+
+        {selected && (
+          <ShowDetail
+            show={selected}
+            onClose={handleCloseModal}
+            onUpdate={handleUpdate}
+          />
+        )}
+
+        {preview && (
+          <SearchPreview
+            result={preview}
+            onClose={handleCloseModal}
+            onTrack={handleAdd}
+            isTracked={isTracked(preview)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard">
@@ -193,6 +424,11 @@ export function Dashboard() {
           <button onClick={() => importRef.current?.click()}>Import</button>
           <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
           <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
+          <div className="user-pill">
+            {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
+            <span>{currentUser.name}</span>
+          </div>
+          <button onClick={handleSignOut}>Log out</button>
         </nav>
       </header>
 

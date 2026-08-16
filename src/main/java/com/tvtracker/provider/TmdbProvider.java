@@ -133,6 +133,40 @@ public class TmdbProvider implements MetadataProvider {
         }
     }
 
+    public List<ShowSearchResult> fetchPopular(int limit) {
+        try {
+            List<ShowSearchResult> results = new ArrayList<>();
+            int page = 1;
+            while (results.size() < limit) {
+                String url = UriComponentsBuilder.fromUriString(baseUrl + "/tv/popular")
+                        .queryParam("api_key", apiKey)
+                        .queryParam("page", page)
+                        .toUriString();
+                JsonNode root = get(url);
+                JsonNode arr = root.path("results");
+                if (!arr.isArray() || arr.isEmpty()) break;
+                for (JsonNode item : arr) {
+                    if (results.size() >= limit) break;
+                    ShowSearchResult r = new ShowSearchResult();
+                    r.tmdbId = item.path("id").asLong();
+                    r.title = item.path("name").asText();
+                    r.overview = item.path("overview").asText();
+                    String poster = item.path("poster_path").asText(null);
+                    r.posterPath = poster != null ? imageBaseUrl + poster : null;
+                    // totalSeasons and productionStatus are not available in list responses; leave defaults
+                    results.add(r);
+                }
+                // if we've exhausted this page and still need more, increment page. TMDB pages up to total_pages
+                page++;
+                // safety guard: don't loop forever
+                if (page > 10) break; // avoid too many pages in case of bad API
+            }
+            return results;
+        } catch (Exception e) {
+            throw new RuntimeException("TMDB fetchPopular failed", e);
+        }
+    }
+
     private JsonNode get(String url) throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());

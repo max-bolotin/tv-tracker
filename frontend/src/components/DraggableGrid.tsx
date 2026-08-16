@@ -5,7 +5,7 @@ import { ShowCard } from './ShowCard';
 interface Props {
   shows: TrackedShow[];           // the full ordered master list (all statuses)
   visibleShows: TrackedShow[];    // what's actually rendered in this grid
-  tab: WatchStatus | 'ALL';
+  tab: WatchStatus | 'ALL' | 'POPULAR';
   onReorder: (reordered: TrackedShow[]) => void;
   onSelect: (show: TrackedShow) => void;
   onDelete: (id: string) => void;

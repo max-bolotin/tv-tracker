@@ -1,4 +1,4 @@
-import type { TrackedShow, ShowSearchResult, WatchStatus } from '../types';
+import type { CurrentUser, TrackedShow, ShowSearchResult, WatchStatus } from '../types';
 
 const BASE = '/api';
 
@@ -15,6 +15,8 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getMe: () => req<CurrentUser>('/me'),
+
   getShows: (status?: WatchStatus) =>
     req<TrackedShow[]>('/shows' + (status ? `?status=${status}` : '')),
 
@@ -68,6 +70,8 @@ export const api = {
   },
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),
+
+  getPopular: (limit = 20) => req<ShowSearchResult[]>(`/shows/popular?limit=${limit}`),
 
   refreshShow: (id: string) => req<TrackedShow>(`/shows/${id}/refresh`, { method: 'POST' }),
 
