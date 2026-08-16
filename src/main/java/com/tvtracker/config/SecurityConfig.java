@@ -39,7 +39,9 @@ public class SecurityConfig {
                     "/login",
                     "/oauth2/**",
                     "/login/oauth2/**",
-                    "/api/shows/popular"
+                    "/api/shows/popular",
+                    "/api/shows/details",
+                    "/api/shows/search"
             ).permitAll();
 
             if (googleConfigured) {
