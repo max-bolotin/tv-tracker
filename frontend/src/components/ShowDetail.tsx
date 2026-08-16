@@ -6,6 +6,11 @@ interface Props {
   show: TrackedShow;
   onClose: () => void;
   onUpdate: (updated: TrackedShow) => void;
+  // Optional handlers: if provided they are used instead of internal API calls.
+  onToggleEpisode?: (id: string | null, seasonNum: number, epNum: number, watched: boolean) => Promise<TrackedShow>;
+  onToggleSeason?: (id: string | null, seasonNum: number, watched: boolean) => Promise<TrackedShow>;
+  onToggleAllWatched?: (id: string | null, watched: boolean) => Promise<TrackedShow>;
+  onUpdateStatus?: (id: string | null, status: WatchStatus) => Promise<TrackedShow>;
 }
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -66,7 +71,8 @@ function applyAllWatched(show: TrackedShow, watched: boolean): TrackedShow {
   return { ...updated, watchStatus: recalcStatus(updated) };
 }
 
-export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
+export function ShowDetail(props: Props) {
+  const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus } = props;
   const [show, setShow] = useState(initialShow);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -83,7 +89,10 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
     setShow(optimistic);
     onUpdate(optimistic);
     try {
-      const confirmed = await api.toggleEpisode(show.id, seasonNum, epNum, watched);
+      const confirmed = await (onToggleEpisode
+        ? onToggleEpisode(show.id || null, seasonNum, epNum, watched)
+        : api.toggleEpisode(show.id!, seasonNum, epNum, watched)
+      );
       setShow(confirmed);
       onUpdate(confirmed);
     } catch {
@@ -98,7 +107,10 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
     setShow(optimistic);
     onUpdate(optimistic);
     try {
-      const confirmed = await api.toggleSeason(show.id, seasonNum, watched);
+      const confirmed = await (onToggleSeason
+        ? onToggleSeason(show.id || null, seasonNum, watched)
+        : api.toggleSeason(show.id!, seasonNum, watched)
+      );
       setShow(confirmed);
       onUpdate(confirmed);
     } catch {
@@ -112,7 +124,10 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
     setShow(optimistic);
     onUpdate(optimistic);
     try {
-      const confirmed = await api.toggleAllWatched(show.id, watched);
+      const confirmed = await (onToggleAllWatched
+        ? onToggleAllWatched(show.id || null, watched)
+        : api.toggleAllWatched(show.id!, watched)
+      );
       setShow(confirmed);
       onUpdate(confirmed);
     } catch {
@@ -127,7 +142,10 @@ export function ShowDetail({ show: initialShow, onClose, onUpdate }: Props) {
     setShow(optimistic);
     onUpdate(optimistic);
     try {
-      const confirmed = await api.updateStatus(show.id, newStatus as WatchStatus);
+      const confirmed = await (onUpdateStatus
+        ? onUpdateStatus(show.id || null, newStatus as WatchStatus)
+        : api.updateStatus(show.id!, newStatus as WatchStatus)
+      );
       setShow(confirmed);
       onUpdate(confirmed);
     } catch {

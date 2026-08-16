@@ -22,6 +22,13 @@ export const api = {
 
   getShow: (id: string) => req<TrackedShow>(`/shows/${id}`),
 
+  getShowDetails: (tmdbId?: number, tvmazeId?: number) => {
+    const q: string[] = [];
+    if (tmdbId) q.push(`tmdbId=${tmdbId}`);
+    if (tvmazeId) q.push(`tvmazeId=${tvmazeId}`);
+    return req<TrackedShow>(`/shows/details${q.length ? '?' + q.join('&') : ''}`);
+  },
+
   searchShows: (q: string) => req<ShowSearchResult[]>(`/shows/search?q=${encodeURIComponent(q)}`),
 
   addShow: (tmdbId?: number, tvmazeId?: number) =>

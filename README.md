@@ -3,7 +3,7 @@
 A monolithic Spring Boot + React app for tracking TV show viewing progress.
 
 ## Prerequisites
-- Java 25+
+- Java 21+
 - Maven 3.9+
 - Node.js 22+ (only needed for standalone frontend dev; Maven downloads its own Node for builds)
 

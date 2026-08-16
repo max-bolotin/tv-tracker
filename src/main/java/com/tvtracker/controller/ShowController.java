@@ -50,6 +50,12 @@ public class ShowController {
         return metadata.search(q);
     }
 
+    /** Fetch full show details from metadata provider WITHOUT persisting */
+    @GetMapping("/details")
+    public TrackedShow details(@RequestParam(required = false) Long tmdbId, @RequestParam(required = false) Long tvmazeId) throws IOException {
+        return metadata.fetchDetails(tmdbId, tvmazeId);
+    }
+
     /** Add a show to tracking by fetching its metadata from external API */
     @SuppressWarnings("ClassEscapesDefinedScope")
     @PostMapping
@@ -151,7 +157,7 @@ public class ShowController {
         return storage.save(userId, fresh);
     }
 
-    private record AddShowRequest(Long tmdbId, Long tvmazeId) {}
-    private record StatusUpdate(WatchStatus status) {}
-    private record EpisodeToggle(boolean watched) {}
+    record AddShowRequest(Long tmdbId, Long tvmazeId) {}
+    record StatusUpdate(WatchStatus status) {}
+    record EpisodeToggle(boolean watched) {}
 }

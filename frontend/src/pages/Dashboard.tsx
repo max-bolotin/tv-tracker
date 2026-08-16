@@ -137,7 +137,7 @@ export function Dashboard() {
       .filter(g => g.shows.length > 0);
   }, [allShows, tab]);
 
-  const handleAdd = async (result: ShowSearchResult) => {
+  const handleAdd = async (result: ShowSearchResult): Promise<TrackedShow | undefined> => {
     if (!currentUser) {
       // require login before tracking — remember desired tab and open OAuth
       localStorage.setItem('postLoginTab', 'ALL');
@@ -149,10 +149,12 @@ export function Dashboard() {
       localWrites.current++;
       const show = await api.addShow(result.tmdbId, result.tvmazeId);
       setAllShows(prev => [show, ...prev]);
+      return show;
     } catch (e) {
       localWrites.current--;
       alert('Failed to add show. Check console.');
       console.error(e);
+      return undefined;
     }
   };
 
@@ -232,21 +234,14 @@ export function Dashboard() {
     }
   };
 
-  const trackedIds = useMemo(() => new Set([
-    ...allShows.map(s => s.tmdbId).filter(Boolean),
-    ...allShows.map(s => s.tvmazeId).filter(Boolean),
-  ]), [allShows]);
 
-  const isTracked = (r: ShowSearchResult | null) => {
-    if (!r) return false;
-    if (r.tmdbId != null && trackedIds.has(r.tmdbId)) return true;
-    if (r.tvmazeId != null && trackedIds.has(r.tvmazeId)) return true;
-    // Fallback: title equality (case-insensitive) to catch mismatched IDs
+  const trackedForResult = (r: ShowSearchResult | null) : TrackedShow | null => {
+    if (!r) return null;
+    const byId = allShows.find(s => (r.tmdbId && s.tmdbId === r.tmdbId) || (r.tvmazeId && s.tvmazeId === r.tvmazeId));
+    if (byId) return byId;
     const title = r.title?.toLowerCase().trim();
-    if (title) {
-      return allShows.some(s => s.title && s.title.toLowerCase().trim() === title);
-    }
-    return false;
+    if (title) return allShows.find(s => s.title && s.title.toLowerCase().trim() === title) ?? null;
+    return null;
   };
 
   const handleSignIn = (targetTab?: string) => {
@@ -340,7 +335,8 @@ export function Dashboard() {
             result={preview}
             onClose={handleCloseModal}
             onTrack={handleAdd}
-            isTracked={isTracked(preview)}
+            trackedShow={trackedForResult(preview)}
+            onUpdate={handleUpdate}
           />
         )}
 
@@ -415,7 +411,8 @@ export function Dashboard() {
             result={preview}
             onClose={handleCloseModal}
             onTrack={handleAdd}
-            isTracked={isTracked(preview)}
+            trackedShow={trackedForResult(preview)}
+            onUpdate={handleUpdate}
           />
         )}
       </div>
@@ -482,7 +479,8 @@ export function Dashboard() {
           result={preview}
           onClose={handleCloseModal}
           onTrack={handleAdd}
-          isTracked={isTracked(preview)}
+          trackedShow={trackedForResult(preview)}
+          onUpdate={handleUpdate}
         />
       )}
 
