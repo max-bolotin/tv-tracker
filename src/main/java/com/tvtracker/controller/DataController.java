@@ -52,12 +52,16 @@ public class DataController {
     public ResponseEntity<ImportResult> importData(@RequestParam("file") MultipartFile file) throws Exception {
         String userId = CurrentUserContext.currentUserId();
         log.info("Import started, file size: {} bytes", file.getSize());
-        ImportExportPayload payload = mapper.readValue(file.getBytes(), ImportExportPayload.class);
-        ImportService.ImportResult result = importService.resolve(payload);
-        storage.saveAll(userId, result.shows());
-        log.info("Import complete: {} shows saved, {} stubs: {}",
-                result.shows().size(), result.stubTitles().size(), result.stubTitles());
-        return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
+
+        // Stream the multipart to avoid loading entire file into memory
+        try (var in = file.getInputStream()) {
+            ImportExportPayload payload = mapper.readValue(in, ImportExportPayload.class);
+            ImportService.ImportResult result = importService.resolve(payload);
+            storage.saveAll(userId, result.shows());
+            log.info("Import complete: {} shows saved, {} stubs: {}",
+                    result.shows().size(), result.stubTitles().size(), result.stubTitles());
+            return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
+        }
     }
 
     @PostMapping("/refresh")

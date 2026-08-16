@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  tv-tracker:
+    build: .
+    image: tv-tracker:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # Upload limits (override via .env or environment)
+      UPLOAD_MAX_FILE_SIZE: ${UPLOAD_MAX_FILE_SIZE:-50MB}
+      UPLOAD_MAX_REQUEST_SIZE: ${UPLOAD_MAX_REQUEST_SIZE:-50MB}
+      MAX_SWALLOW_SIZE: ${MAX_SWALLOW_SIZE:-52428800}
+
+      # Optional credentials (set via .env or env)
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

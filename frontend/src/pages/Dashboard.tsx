@@ -198,6 +198,13 @@ export function Dashboard() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Frontend file size limit check (configurable via Vite env VITE_MAX_UPLOAD_BYTES)
+    const maxBytes = Number(import.meta.env.VITE_MAX_UPLOAD_BYTES) || 52428800;
+    if (file.size > maxBytes) {
+      alert(`Selected file is too large (${(file.size/1024/1024).toFixed(1)} MB). Maximum allowed is ${(maxBytes/1024/1024).toFixed(1)} MB.`);
+      e.target.value = '';
+      return;
+    }
     e.target.value = '';
     setImporting(true);
     try {
