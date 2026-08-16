@@ -46,6 +46,7 @@ export function Dashboard() {
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     api.getMe()
@@ -95,11 +96,24 @@ export function Dashboard() {
         try {
           const created = await api.addShow(parsed.tmdbId, parsed.tvmazeId);
           if (!mounted) return;
-          setAllShows(prev => [created, ...prev]);
-          setTab(created.watchStatus || 'ALL');
-          openModal(() => setSelected(created));
-          setImportToast(`Added show: ${created.title}`);
-          setTimeout(() => setImportToast(null), 5000);
+          // Deduplicate: if already present in allShows, open existing instead of inserting duplicate
+          setAllShows(prev => {
+            const exists = prev.find(s => (created.tmdbId && s.tmdbId === created.tmdbId) || (created.tvmazeId && s.tvmazeId === created.tvmazeId) || (created.title && s.title && s.title.toLowerCase().trim() === created.title.toLowerCase().trim()));
+            if (exists) {
+              // open existing after state update below by returning same array (no-op)
+              setTab(exists.watchStatus || 'ALL');
+              openModal(() => setSelected(exists));
+              setImportToast(`Show already tracked: ${exists.title}`);
+              setTimeout(() => setImportToast(null), 5000);
+              return prev;
+            }
+            // not present — insert at head
+            setTab(created.watchStatus || 'ALL');
+            openModal(() => setSelected(created));
+            setImportToast(`Added show: ${created.title}`);
+            setTimeout(() => setImportToast(null), 5000);
+            return [created, ...prev];
+          });
         } catch (err) {
           console.error('Failed to add pending show after login', err);
         }
@@ -330,13 +344,31 @@ export function Dashboard() {
             {currentUser ? (
               <>
                 <div className="user-pill">
-                  {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
-                  <span>{currentUser.name}</span>
+                  {currentUser.picture ? (
+                    <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />
+                  ) : (
+                    <div className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</div>
+                  )}
+                  <span className="user-name">{currentUser.name}</span>
                 </div>
                 <button onClick={() => handleSignOut()}>Log out</button>
               </>
             ) : (
               <button onClick={() => handleSignIn()}>Sign in with Google</button>
+            )}
+            {/* Mobile hamburger */}
+            <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
+            {menuOpen && (
+              <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+                <button onClick={() => { handleExport(); }}>Export</button>
+                <button onClick={() => { importRef.current?.click(); }}>Import</button>
+                <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
+                {currentUser ? (
+                  <button onClick={() => { handleSignOut(); }}>Log out</button>
+                ) : (
+                  <button onClick={() => { handleSignIn(); }}>Sign in</button>
+                )}
+              </div>
             )}
           </nav>
         </header>
@@ -436,6 +468,12 @@ export function Dashboard() {
           <h1>📺 TV Tracker</h1>
           <nav className="header-nav">
             <button onClick={() => handleSignIn()}>Sign in with Google</button>
+            <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
+            {menuOpen && (
+              <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+                <button onClick={() => handleSignIn()}>Sign in</button>
+              </div>
+            )}
           </nav>
         </header>
 
@@ -515,10 +553,23 @@ export function Dashboard() {
           <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
           <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
           <div className="user-pill">
-            {currentUser.picture && <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />}
-            <span>{currentUser.name}</span>
+            {currentUser.picture ? (
+              <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />
+            ) : (
+              <div className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</div>
+            )}
+            <span className="user-name">{currentUser.name}</span>
           </div>
           <button onClick={handleSignOut}>Log out</button>
+          <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
+          {menuOpen && (
+            <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+              <button onClick={() => handleExport()}>Export</button>
+              <button onClick={() => importRef.current?.click()}>Import</button>
+              <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
+              <button onClick={() => handleSignOut()}>Log out</button>
+            </div>
+          )}
         </nav>
       </header>
 

@@ -49,16 +49,6 @@ export function ShowCard({ show, onClick, onDelete, onRefresh }: Props) {
         <span className={`badge status-${show.watchStatus.toLowerCase()}`}>
           {STATUS_LABELS[show.watchStatus]}
         </span>
-        {/* Untrack button (smaller, subtle reddish-grey) */}
-        <div style={{ marginTop: '0.5rem' }}>
-          <button
-            className="untrack-btn"
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            title="Untrack"
-          >
-            Untrack
-          </button>
-        </div>
       </div>
       <button
         className={`refresh-card-btn${refreshing ? ' spinning' : ''}`}
