@@ -48,6 +48,19 @@ export function Dashboard() {
   const localWrites = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  function dedupeShows(shows: any[]) {
+    const seen = new Set<string|number>();
+    const out: any[] = [];
+    for (const s of shows) {
+      const id = s.tmdbId ?? s.tvmazeId ?? (s.title || '').toLowerCase();
+      if (id == null) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(s);
+    }
+    return out;
+  }
+
   useEffect(() => {
     api.getMe()
       .then(user => {
@@ -126,6 +139,19 @@ export function Dashboard() {
 
   useEffect(() => {
     // Compute columns based on container width and request full rows (>= MIN_POPULAR)
+    function dedupeShows(shows: any[]) {
+      const seen = new Set<string|number>();
+      const out: any[] = [];
+      for (const s of shows) {
+        const id = s.tmdbId ?? s.tvmazeId ?? (s.title || '').toLowerCase();
+        if (id == null) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(s);
+      }
+      return out;
+    }
+
     function computeAndFetch() {
       const container = popularRef.current || document.documentElement;
       const width = container.getBoundingClientRect().width || window.innerWidth;
@@ -138,7 +164,7 @@ export function Dashboard() {
       const rows = Math.max(rowsNeeded, popularRows || 0);
       const limit = rows * cols;
       setPopularRows(rows);
-      api.getPopular(limit).then(setPopularShows).catch(() => setPopularShows([]));
+      api.getPopular(limit).then(shows => { const unique = dedupeShows(shows); setPopularShows(unique); }).catch(() => setPopularShows([]));
     }
 
     computeAndFetch();
@@ -152,7 +178,7 @@ export function Dashboard() {
     const es = new EventSource('/api/events');
     es.addEventListener('data-changed', () => {
       if (localWrites.current > 0) { localWrites.current--; return; }
-      api.getShows().then(setAllShows);
+      api.getShows().then(shows => setAllShows(shows));
     });
     return () => es.close();
   }, [currentUser]);
@@ -406,7 +432,7 @@ export function Dashboard() {
             const nextRows = Math.max(1, popularRows) + 1;
             const nextLimit = nextRows * cols;
             setPopularRows(nextRows);
-            api.getPopular(nextLimit).then(setPopularShows).catch(() => setPopularShows([]));
+            api.getPopular(nextLimit).then(shows => { const unique = dedupeShows(shows); setPopularShows(unique); }).catch(() => setPopularShows([]));
           }}>Explore more</button>
         </div>
 
@@ -494,7 +520,7 @@ export function Dashboard() {
         {(tab as any) === 'POPULAR' ? (
           <div className="popular-grid">
             {popularShows.map(p => (
-              <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
+              <div key={p.tmdbId ?? p.tvmazeId ?? p.title} className="popular-card" onClick={() => handlePreview(p)}>
                 {p.posterPath && <img src={p.posterPath} alt={p.title} />}
                 <div className="popular-title">{p.title}</div>
               </div>
