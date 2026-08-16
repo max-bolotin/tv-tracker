@@ -11,6 +11,10 @@ interface Props {
   onToggleSeason?: (id: string | null, seasonNum: number, watched: boolean) => Promise<TrackedShow>;
   onToggleAllWatched?: (id: string | null, watched: boolean) => Promise<TrackedShow>;
   onUpdateStatus?: (id: string | null, status: WatchStatus) => Promise<TrackedShow>;
+  // Optional handler to create/track this show when user clicks 'Track this show'
+  onTrack?: () => Promise<TrackedShow | undefined>;
+  // Optional handler to untrack (delete) the show when viewing in My Shows context
+  onUntrack?: () => Promise<void> | (() => void);
 }
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -72,7 +76,7 @@ function applyAllWatched(show: TrackedShow, watched: boolean): TrackedShow {
 }
 
 export function ShowDetail(props: Props) {
-  const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus } = props;
+  const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus, onTrack, onUntrack } = props;
   const [show, setShow] = useState(initialShow);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -162,6 +166,51 @@ export function ShowDetail(props: Props) {
           {show.posterPath && <img src={show.posterPath} alt={show.title} className="modal-poster" />}
           <div className="modal-meta">
             <h2>{show.title}</h2>
+            {/* Track / Untrack button: if an onUntrack handler provided, show Untrack (for My Shows context). Otherwise, show Already tracked (disabled) for previews */}
+            <div style={{ marginTop: '0.5rem' }}>
+              {show.id ? (
+                onUntrack ? (
+                  <button
+                    className="untrack-btn"
+                    onClick={async (e) => { e.stopPropagation();
+                      try {
+                        const maybe: any = onUntrack ? (onUntrack() as any) : undefined;
+                        if (maybe && typeof maybe.then === 'function') await maybe;
+                        onClose();
+                      } catch (err) {
+                        console.error('Untrack failed', err);
+                        alert('Failed to untrack show.');
+                      }
+                    }}
+                    style={{ background: '#737070', color: 'white', padding: '6px 10px', borderRadius: 6 }}
+                  >
+                    Untrack
+                  </button>
+                ) : (
+                  <button className="track-button tracked" disabled style={{ background: '#ddd', color: '#333', padding: '6px 10px', borderRadius: 6 }}>
+                    ✓ Already tracked
+                  </button>
+                )
+              ) : (
+                <button
+                  className="track-button"
+                  onClick={async (e) => { e.stopPropagation();
+                    // prefer parent-provided creator, otherwise call API directly
+                    try {
+                      const created = onTrack ? await onTrack() : await api.addShow(show.tmdbId, show.tvmazeId);
+                      if (created) { setShow(created); onUpdate(created); }
+                    } catch (err) {
+                      // If creation requires auth, bubble up a simple alert — parent typically handles sign-in flow when provided
+                      console.error('Track failed', err);
+                      alert('Failed to track show. Please sign in or try again.');
+                    }
+                  }}
+                  style={{ background: '#ff7a18', color: 'white', padding: '6px 10px', borderRadius: 6 }}
+                >
+                  Track this show
+                </button>
+              )}
+            </div>
             <p className="overview">{show.overview}</p>
             <div className="badges">
               <span className={`badge production-${show.productionStatus.toLowerCase()}`}>

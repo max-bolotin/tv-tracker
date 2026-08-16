@@ -63,7 +63,51 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!currentUser) return;
-    api.getShows().then(setAllShows);
+    let mounted = true;
+    (async () => {
+      try {
+        const shows = await api.getShows();
+        if (!mounted) return;
+        setAllShows(shows);
+
+        const pending = localStorage.getItem('postLoginAdd');
+        if (!pending) return;
+        localStorage.removeItem('postLoginAdd');
+        const parsed = JSON.parse(pending);
+        // Check if it is already tracked
+        const existing = (() => {
+          const byId = shows.find(s => (parsed.tmdbId && s.tmdbId === parsed.tmdbId) || (parsed.tvmazeId && s.tvmazeId === parsed.tvmazeId));
+          if (byId) return byId;
+          const title = parsed.title?.toLowerCase().trim();
+          if (title) return shows.find(s => s.title && s.title.toLowerCase().trim() === title) ?? null;
+          return null;
+        })();
+
+        if (existing) {
+          // Open card and show a non-blocking toast that it's already tracked
+          setTab(existing.watchStatus || 'ALL');
+          openModal(() => setSelected(existing));
+          setImportToast(`Show already tracked: ${existing.title}`);
+          setTimeout(() => setImportToast(null), 5000);
+          return;
+        }
+
+        try {
+          const created = await api.addShow(parsed.tmdbId, parsed.tvmazeId);
+          if (!mounted) return;
+          setAllShows(prev => [created, ...prev]);
+          setTab(created.watchStatus || 'ALL');
+          openModal(() => setSelected(created));
+          setImportToast(`Added show: ${created.title}`);
+          setTimeout(() => setImportToast(null), 5000);
+        } catch (err) {
+          console.error('Failed to add pending show after login', err);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+    return () => { mounted = false; };
   }, [currentUser]);
 
   useEffect(() => {
@@ -73,7 +117,9 @@ export function Dashboard() {
       const width = container.getBoundingClientRect().width || window.innerWidth;
       // Use min card width matching CSS (160px) + gap (approx 16px)
       const minCard = 160 + 16;
-      const cols = Math.max(1, Math.floor(width / minCard));
+      let cols = Math.max(1, Math.floor(width / minCard));
+      // Mobile override: small screens often display more compact cards — prefer 3 columns on narrow widths
+      if (width < 600) cols = 3;
       const rowsNeeded = Math.max(1, Math.ceil(MIN_POPULAR / cols));
       const rows = Math.max(rowsNeeded, popularRows || 0);
       const limit = rows * cols;
@@ -137,11 +183,12 @@ export function Dashboard() {
       .filter(g => g.shows.length > 0);
   }, [allShows, tab]);
 
+  const [authPromptPayload, setAuthPromptPayload] = useState<ShowSearchResult | null>(null);
+
   const handleAdd = async (result: ShowSearchResult): Promise<TrackedShow | undefined> => {
     if (!currentUser) {
-      // require login before tracking — remember desired tab and open OAuth
-      localStorage.setItem('postLoginTab', 'ALL');
-      handleSignIn('ALL');
+      // show a small confirmation modal asking the user to sign in first
+      setAuthPromptPayload(result);
       return;
     }
 
@@ -156,6 +203,16 @@ export function Dashboard() {
       console.error(e);
       return undefined;
     }
+  };
+
+  const cancelAuthPrompt = () => setAuthPromptPayload(null);
+  const continueAuthPrompt = () => {
+    if (!authPromptPayload) return;
+    // persist desired add across OAuth redirect
+    localStorage.setItem('postLoginAdd', JSON.stringify({ tmdbId: authPromptPayload.tmdbId, tvmazeId: authPromptPayload.tvmazeId, title: authPromptPayload.title }));
+    localStorage.setItem('postLoginTab', 'ALL');
+    setAuthPromptPayload(null);
+    handleSignIn('ALL');
   };
 
   const handleDelete = async (id: string) => {
@@ -312,7 +369,8 @@ export function Dashboard() {
             const container = popularRef.current || document.documentElement;
             const width = container.getBoundingClientRect().width || window.innerWidth;
             const minCard = 160 + 16;
-            const cols = Math.max(1, Math.floor(width / minCard));
+            let cols = Math.max(1, Math.floor(width / minCard));
+            if (width < 600) cols = 3;
             const nextRows = Math.max(1, popularRows) + 1;
             const nextLimit = nextRows * cols;
             setPopularRows(nextRows);
@@ -327,6 +385,7 @@ export function Dashboard() {
             show={selected}
             onClose={handleCloseModal}
             onUpdate={handleUpdate}
+            onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
           />
         )}
 
@@ -338,6 +397,19 @@ export function Dashboard() {
             trackedShow={trackedForResult(preview)}
             onUpdate={handleUpdate}
           />
+        )}
+
+        {authPromptPayload && (
+          <div className="modal-overlay" onClick={cancelAuthPrompt}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <h3>Sign in required</h3>
+              <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button onClick={cancelAuthPrompt}>Cancel</button>
+                <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
@@ -403,6 +475,7 @@ export function Dashboard() {
             show={selected}
             onClose={handleCloseModal}
             onUpdate={handleUpdate}
+            onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
           />
         )}
 
@@ -414,6 +487,19 @@ export function Dashboard() {
             trackedShow={trackedForResult(preview)}
             onUpdate={handleUpdate}
           />
+        )}
+
+        {authPromptPayload && (
+          <div className="modal-overlay" onClick={cancelAuthPrompt}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <h3>Sign in required</h3>
+              <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button onClick={cancelAuthPrompt}>Cancel</button>
+                <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -471,6 +557,7 @@ export function Dashboard() {
           show={selected}
           onClose={handleCloseModal}
           onUpdate={handleUpdate}
+          onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
         />
       )}
 
@@ -482,6 +569,19 @@ export function Dashboard() {
           trackedShow={trackedForResult(preview)}
           onUpdate={handleUpdate}
         />
+      )}
+
+      {authPromptPayload && (
+        <div className="modal-overlay" onClick={cancelAuthPrompt}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>Sign in required</h3>
+            <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <button onClick={cancelAuthPrompt}>Cancel</button>
+              <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ScrollToTop />

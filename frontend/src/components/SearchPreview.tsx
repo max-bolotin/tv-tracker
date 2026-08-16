@@ -67,6 +67,7 @@ export function SearchPreview({ result, onClose, onTrack, trackedShow, onUpdate 
       onToggleSeason={onToggleSeason}
       onToggleAllWatched={onToggleAll}
       onUpdateStatus={onUpdateStatus}
+      onTrack={onTrack ? () => onTrack(result) : undefined}
     />
   );
 }

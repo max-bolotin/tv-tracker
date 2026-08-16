@@ -208,6 +208,18 @@ body {
 }
 .show-card:hover .delete-btn { display: flex; }
 .delete-btn:hover { background: #cc3333; color: white; }
+/* Untrack button styling */
+.untrack-btn {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: #523737;
+  color: #fff;
+  cursor: pointer;
+}
+.untrack-btn:hover { background: #6a3f3f; }
+.untrack-btn:active { transform: translateY(1px); }
 
 .refresh-card-btn {
   position: absolute;
@@ -459,6 +471,20 @@ body {
   line-height: 1.5;
 }
 .import-toast:hover { border-color: #a08a3a; }
+
+/* Modal buttons: make Cancel look like a proper button when not using .auth-button */
+.modal button:not(.auth-button):not(.modal-close) {
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #3a3a5a;
+  background: transparent;
+  color: #c0c0e0;
+  cursor: pointer;
+}
+.modal button:not(.auth-button):not(.modal-close):hover {
+  background: #2a2a3a;
+}
+
 
 /* Import overlay */
 .import-overlay {
