@@ -38,7 +38,13 @@ body {
   border: 1px solid #3a3a5a;
   color: #dfe6ff;
   font-size: 0.85rem;
+  max-width: 140px; /* avoid pushing layout */
+  overflow: hidden;
 }
+.user-name { display: inline-block; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-initials { width: 28px; height: 28px; border-radius: 50%; background: #3a3a5a; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; }
+.user-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+@media (max-width: 700px) { .user-name { display: none; } }
 .user-avatar {
   width: 24px;
   height: 24px;
@@ -356,7 +362,7 @@ body {
 }
 .ep-airdate {
   font-size: 0.75rem;
-  color: #666;
+  color: #cfcfcf; /* brighter for readability */
 }
 .episode-unaired {
   opacity: 0.45;
@@ -386,6 +392,20 @@ body {
 .popular-card { background: #1a1a24; border-radius: 10px; overflow: hidden; border: 1px solid #2a2a3a; cursor: pointer; }
 .popular-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
 .popular-title { padding: 0.6rem; font-size: 0.9rem; }
+
+/* Mobile header: collapse header-nav and show hamburger */
+.hamburger { display: none; background: transparent; border: none; color: #c0c0e0; font-size: 1.2rem; cursor: pointer; }
+.mobile-menu { position: absolute; right: 1rem; top: 66px; background: #17171a; border: 1px solid #2a2a3a; padding: 0.5rem; border-radius: 8px; display: none; z-index: 500; min-width: 160px; }
+.mobile-menu button { display: block; width: 100%; text-align: left; margin: 0.25rem 0; white-space: nowrap; }
+@media (max-width: 700px) {
+  /* hide action buttons but keep hamburger and user-pill */
+  .header-nav > button:not(.hamburger), .header-nav > .refresh-btn, .header-nav > input { display: none; }
+  .header-nav > .user-pill { display: inline-flex; }
+  .hamburger { display: inline-flex; }
+  .header-nav { position: relative; }
+  .mobile-menu { display: block; }
+}
+
 
 /* All-tab section dividers */
 .section-divider {
