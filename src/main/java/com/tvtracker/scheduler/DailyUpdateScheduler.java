@@ -91,11 +91,9 @@ public class DailyUpdateScheduler {
             var existingSeason = existing.seasons.stream()
                     .filter(s -> s.number == freshSeason.number).findFirst();
             if (existingSeason.isEmpty()) {
-                if (!freshSeason.episodes.isEmpty()) {
-                    existing.seasons.add(freshSeason);
-                    addedAny = true;
-                }
-                // empty new season (announced but no episodes yet) — skip entirely
+                // always add the season entry (even if empty) so we remember announced seasons
+                existing.seasons.add(freshSeason);
+                if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) addedAny = true;
             } else {
                 var es = existingSeason.get();
                 for (var freshEp : freshSeason.episodes) {

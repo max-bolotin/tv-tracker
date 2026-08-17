@@ -62,17 +62,27 @@ public class TvMazeProvider implements MetadataProvider {
             String status = root.path("status").asText("");
             show.productionStatus = status.equalsIgnoreCase("Ended") ? ProductionStatus.ENDED : ProductionStatus.ONGOING;
 
-            // Build seasons from embedded episodes
-            java.util.Map<Integer, Season> seasonMap = new java.util.TreeMap<>();
-            for (JsonNode ep : root.path("_embedded").path("episodes")) {
-                int sNum = ep.path("season").asInt();
-                int eNum = ep.path("number").asInt();
-                String airDate = ep.path("airdate").asText(null);
-                if (airDate != null && airDate.isBlank()) airDate = null;
-                seasonMap.computeIfAbsent(sNum, Season::new)
-                         .episodes.add(new Episode(eNum, ep.path("name").asText(), airDate));
+            // Build seasons. Use the seasons endpoint so we include seasons even if they have no episodes yet.
+            JsonNode seasonsRoot = get(baseUrl + "/shows/" + tvmazeId + "/seasons");
+            List<Season> seasons = new ArrayList<>();
+            for (JsonNode sNode : seasonsRoot) {
+                int sNum = sNode.path("number").asInt();
+                Season season = new Season(sNum);
+                // fetch episodes for this season (may return empty array)
+                try {
+                    JsonNode eps = get(baseUrl + "/seasons/" + sNode.path("id").asInt() + "/episodes");
+                    for (JsonNode ep : eps) {
+                        int eNum = ep.path("number").asInt();
+                        String airDate = ep.path("airdate").asText(null);
+                        if (airDate != null && airDate.isBlank()) airDate = null;
+                        season.episodes.add(new Episode(eNum, ep.path("name").asText(), airDate));
+                    }
+                } catch (Exception ignore) {
+                    // treat as empty episode list
+                }
+                seasons.add(season);
             }
-            show.seasons = new ArrayList<>(seasonMap.values());
+            show.seasons = seasons;
             show.totalSeasons = show.seasons.size();
             return show;
         } catch (Exception e) {

@@ -294,6 +294,13 @@ export function Dashboard() {
     return null;
   });
 
+  // listen for generic in-app toast events (e.g. refresh success/failure)
+  useEffect(() => {
+    const h = (e: any) => setImportToast(e.detail as string);
+    window.addEventListener('app-toast', h as EventListener);
+    return () => window.removeEventListener('app-toast', h as EventListener);
+  }, []);
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

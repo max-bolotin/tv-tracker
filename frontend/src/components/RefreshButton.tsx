@@ -13,9 +13,12 @@ export function RefreshButton({ onDone }: Props) {
     try {
       await api.refresh();
       onDone();
+      // dispatch a toast event so the parent can show a non-blocking message
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: 'Data refreshed successfully.' }));
       setState('done');
       setTimeout(() => setState('idle'), 2000);
     } catch {
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: 'Refresh failed. See console.' }));
       setState('idle');
     }
   };

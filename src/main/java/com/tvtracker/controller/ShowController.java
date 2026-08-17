@@ -148,12 +148,27 @@ public class ShowController {
         TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
         fresh.id = existing.id;
         fresh.watchStatus = existing.watchStatus;
+        // carry over watched flags for matching episodes
         for (var existingSeason : existing.seasons) {
             fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()
                 .ifPresent(freshSeason -> existingSeason.episodes.forEach(existingEp ->
                     freshSeason.episodes.stream().filter(e -> e.number == existingEp.number).findFirst()
                         .ifPresent(freshEp -> freshEp.watched = existingEp.watched)));
         }
+        // Business rule: if the show was UP_TO_DATE and we detected new seasons with episodes, move to WATCHING_NOW
+        try {
+            int maxExisting = existing.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
+            int maxFresh = fresh.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
+            if (existing.watchStatus == WatchStatus.UP_TO_DATE && maxFresh > maxExisting) {
+                // check whether any of the new seasons contain episodes
+                boolean newHasEpisodes = fresh.seasons.stream()
+                        .filter(s -> s.number > maxExisting)
+                        .anyMatch(s -> s.episodes != null && !s.episodes.isEmpty());
+                if (newHasEpisodes) {
+                    fresh.watchStatus = WatchStatus.WATCHING_NOW;
+                }
+            }
+        } catch (Exception ignore) {}
         return storage.save(userId, fresh);
     }
 

@@ -32,7 +32,7 @@ function formatDate(iso: string): string {
 function recalcStatus(show: TrackedShow): WatchStatus {
   if (show.watchStatus === 'DROPPED') return 'DROPPED';
   const anyWatched = show.seasons.some(s => s.episodes.some(e => e.watched));
-  const allWatched = show.seasons.length > 0 && show.seasons.every(s => s.episodes.length > 0 && s.episodes.every(e => e.watched));
+  const allWatched = show.seasons.length > 0 && show.seasons.every(s => s.episodes.length > 0 && s.episodes.every(e => e.watched)); // unchanged, explicit about non-empty seasons
   if (!anyWatched) return 'NOT_WATCHED';
   if (allWatched) return show.productionStatus === 'ENDED' ? 'FINISHED' : 'UP_TO_DATE';
   return 'WATCHING_NOW';
@@ -226,7 +226,7 @@ export function ShowDetail(props: Props) {
         <label className="mark-all-watched">
           <input
             type="checkbox"
-            checked={show.seasons.length > 0 && show.seasons.every(s => s.episodes.every(e => e.watched))}
+            checked={show.seasons.length > 0 && show.seasons.every(s => s.episodes.length > 0 && s.episodes.every(e => e.watched))}
             onChange={e => handleAllWatched(e.target.checked)}
           />
           Mark entire show as watched
@@ -234,7 +234,7 @@ export function ShowDetail(props: Props) {
 
         <div className="seasons-list">
           {show.seasons.map(season => {
-            const allWatched = season.episodes.every(e => e.watched);
+            const allWatched = season.episodes.length > 0 && season.episodes.every(e => e.watched);
             const isOpen = expanded.has(season.number);
             const airedCount = season.episodes.filter(isAired).length;
             const watchedCount = season.episodes.filter(e => e.watched).length;
