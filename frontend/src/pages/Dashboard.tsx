@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import type { TrackedShow, WatchStatus, CurrentUser } from '../types';
-import type { ShowSearchResult } from '../types';
-import { api } from '../api/client';
-import { DraggableGrid } from '../components/DraggableGrid';
-import { ShowDetail } from '../components/ShowDetail';
-import { SearchBar, type SearchBarHandle } from '../components/SearchBar';
-import { SearchPreview } from '../components/SearchPreview';
-import { ScrollToTop } from '../components/ScrollToTop';
-import { RefreshButton } from '../components/RefreshButton';
+import {useEffect, useRef, useState, useMemo, useCallback} from 'react';
+import type {TrackedShow, WatchStatus, CurrentUser} from '../types';
+import type {ShowSearchResult} from '../types';
+import {api} from '../api/client';
+import {DraggableGrid} from '../components/DraggableGrid';
+import {ShowDetail} from '../components/ShowDetail';
+import {SearchBar, type SearchBarHandle} from '../components/SearchBar';
+import {SearchPreview} from '../components/SearchPreview';
+import {ScrollToTop} from '../components/ScrollToTop';
+import {RefreshButton} from '../components/RefreshButton';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -15,30 +15,37 @@ const STATUS_ORDER: WatchStatus[] = [
 
 const STATUS_LABELS: Record<WatchStatus, string> = {
   WATCHING_NOW: 'Watching Now',
-  NOT_WATCHED:  'Not Watched',
-  UP_TO_DATE:   'Up to Date',
-  FINISHED:     'Finished',
-  DROPPED:      'Dropped',
+  NOT_WATCHED: 'Not Watched',
+  UP_TO_DATE: 'Up to Date',
+  FINISHED: 'Finished',
+  DROPPED: 'Dropped',
 };
 
 const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
-  { label: 'Trending now',  value: 'POPULAR' },
-  { label: 'My Shows (All)', value: 'ALL' },
-  { label: 'Watching Now', value: 'WATCHING_NOW' },
-  { label: 'Not Watched',  value: 'NOT_WATCHED' },
-  { label: 'Up to Date',   value: 'UP_TO_DATE' },
-  { label: 'Finished',     value: 'FINISHED' },
-  { label: 'Dropped',      value: 'DROPPED' },
+  {label: 'Trending now', value: 'POPULAR'},
+  {label: 'My Shows (All)', value: 'ALL'},
+  {label: 'Watching Now', value: 'WATCHING_NOW'},
+  {label: 'Not Watched', value: 'NOT_WATCHED'},
+  {label: 'Up to Date', value: 'UP_TO_DATE'},
+  {label: 'Finished', value: 'FINISHED'},
+  {label: 'Dropped', value: 'DROPPED'},
 ];
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
   const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>(() => {
-    try { return (localStorage.getItem('tab') as any) || 'POPULAR'; } catch { return 'POPULAR'; }
+    try {
+      return (localStorage.getItem('tab') as any) || 'POPULAR';
+    } catch {
+      return 'POPULAR';
+    }
   });
 
   useEffect(() => {
-    try { localStorage.setItem('tab', tab as string); } catch {}
+    try {
+      localStorage.setItem('tab', tab as string);
+    } catch {
+    }
   }, [tab]);
   const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
   const popularRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +62,7 @@ export function Dashboard() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   function dedupeShows(shows: any[]) {
-    const seen = new Set<string|number>();
+    const seen = new Set<string | number>();
     const out: any[] = [];
     for (const s of shows) {
       const id = s.tmdbId ?? s.tvmazeId ?? (s.title || '').toLowerCase();
@@ -69,16 +76,16 @@ export function Dashboard() {
 
   useEffect(() => {
     api.getMe()
-      .then(user => {
-        setCurrentUser(user);
-        const post = localStorage.getItem('postLoginTab');
-        if (user && post) {
-          setTab(post as any);
-          localStorage.removeItem('postLoginTab');
-        }
-      })
-      .catch(() => setCurrentUser(null))
-      .finally(() => setAuthLoading(false));
+    .then(user => {
+      setCurrentUser(user);
+      const post = localStorage.getItem('postLoginTab');
+      if (user && post) {
+        setTab(post as any);
+        localStorage.removeItem('postLoginTab');
+      }
+    })
+    .catch(() => setCurrentUser(null))
+    .finally(() => setAuthLoading(false));
   }, []);
 
   useEffect(() => {
@@ -140,13 +147,15 @@ export function Dashboard() {
         console.error(err);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [currentUser]);
 
   useEffect(() => {
     // Compute columns based on container width and request full rows (>= MIN_POPULAR)
     function dedupeShows(shows: any[]) {
-      const seen = new Set<string|number>();
+      const seen = new Set<string | number>();
       const out: any[] = [];
       for (const s of shows) {
         const id = s.tmdbId ?? s.tvmazeId ?? (s.title || '').toLowerCase();
@@ -170,7 +179,10 @@ export function Dashboard() {
       const rows = Math.max(rowsNeeded, popularRows || 0);
       const limit = rows * cols;
       setPopularRows(rows);
-      api.getPopular(limit).then(shows => { const unique = dedupeShows(shows); setPopularShows(unique); }).catch(() => setPopularShows([]));
+      api.getPopular(limit).then(shows => {
+        const unique = dedupeShows(shows);
+        setPopularShows(unique);
+      }).catch(() => setPopularShows([]));
     }
 
     computeAndFetch();
@@ -183,7 +195,10 @@ export function Dashboard() {
     if (!currentUser) return;
     const es = new EventSource('/api/events');
     es.addEventListener('data-changed', () => {
-      if (localWrites.current > 0) { localWrites.current--; return; }
+      if (localWrites.current > 0) {
+        localWrites.current--;
+        return;
+      }
       api.getShows().then(shows => setAllShows(shows));
     });
     return () => es.close();
@@ -192,7 +207,7 @@ export function Dashboard() {
   // Push a history entry when a modal opens, pop it to close on back gesture/button
   const openModal = useCallback((open: () => void) => {
     open();
-    history.pushState({ modal: true }, '');
+    history.pushState({modal: true}, '');
   }, []);
 
   const closeAll = useCallback(() => {
@@ -225,8 +240,8 @@ export function Dashboard() {
   const groups = useMemo(() => {
     if (tab !== 'ALL') return null;
     return STATUS_ORDER
-      .map(status => ({ status, shows: allShows.filter(s => s.watchStatus === status) }))
-      .filter(g => g.shows.length > 0);
+    .map(status => ({status, shows: allShows.filter(s => s.watchStatus === status)}))
+    .filter(g => g.shows.length > 0);
   }, [allShows, tab]);
 
   const [authPromptPayload, setAuthPromptPayload] = useState<ShowSearchResult | null>(null);
@@ -255,7 +270,11 @@ export function Dashboard() {
   const continueAuthPrompt = () => {
     if (!authPromptPayload) return;
     // persist desired add across OAuth redirect
-    localStorage.setItem('postLoginAdd', JSON.stringify({ tmdbId: authPromptPayload.tmdbId, tvmazeId: authPromptPayload.tvmazeId, title: authPromptPayload.title }));
+    localStorage.setItem('postLoginAdd', JSON.stringify({
+      tmdbId: authPromptPayload.tmdbId,
+      tvmazeId: authPromptPayload.tvmazeId,
+      title: authPromptPayload.title
+    }));
     localStorage.setItem('postLoginTab', 'ALL');
     setAuthPromptPayload(null);
     handleSignIn('ALL');
@@ -296,11 +315,15 @@ export function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [importToast, setImportToast] = useState<string | null>(() => {
     const msg = sessionStorage.getItem('importToast');
-    if (msg) { sessionStorage.removeItem('importToast'); return msg; }
+    if (msg) {
+      sessionStorage.removeItem('importToast');
+      return msg;
+    }
     return null;
   });
 
   // listen for generic in-app toast events (e.g. refresh success/failure)
+  // Note: reuses importToast state — a new toast will replace any currently visible one
   const toastTimer = useRef<number | null>(null);
   useEffect(() => {
     const h = (e: any) => {
@@ -323,7 +346,7 @@ export function Dashboard() {
     // Frontend file size limit check (configurable via Vite env VITE_MAX_UPLOAD_BYTES)
     const maxBytes = Number(import.meta.env.VITE_MAX_UPLOAD_BYTES) || 52428800;
     if (file.size > maxBytes) {
-      alert(`Selected file is too large (${(file.size/1024/1024).toFixed(1)} MB). Maximum allowed is ${(maxBytes/1024/1024).toFixed(1)} MB.`);
+      alert(`Selected file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed is ${(maxBytes / 1024 / 1024).toFixed(1)} MB.`);
       e.target.value = '';
       return;
     }
@@ -355,7 +378,7 @@ export function Dashboard() {
   };
 
 
-  const trackedForResult = (r: ShowSearchResult | null) : TrackedShow | null => {
+  const trackedForResult = (r: ShowSearchResult | null): TrackedShow | null => {
     if (!r) return null;
     const byId = allShows.find(s => (r.tmdbId && s.tmdbId === r.tmdbId) || (r.tvmazeId && s.tvmazeId === r.tvmazeId));
     if (byId) return byId;
@@ -373,331 +396,386 @@ export function Dashboard() {
   };
 
   const handleSignOut = async () => {
-    await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    await fetch('/logout', {method: 'POST', credentials: 'same-origin'});
     setCurrentUser(null);
     setAllShows([]);
   };
 
-  const gridProps = { shows: allShows, tab, onReorder: handleReorder, onSelect: handleSelectShow, onDelete: handleDelete, onRefresh: handleRefreshShow };
+  const gridProps = {
+    shows: allShows,
+    tab,
+    onReorder: handleReorder,
+    onSelect: handleSelectShow,
+    onDelete: handleDelete,
+    onRefresh: handleRefreshShow
+  };
 
   if ((tab as any) === 'POPULAR') {
     return (
-      <div className="dashboard">
-        <header className="app-header">
-          <h1>📺 TV Tracker</h1>
-          <nav className="header-nav">
-            <button onClick={() => handleExport()}>Export</button>
-            <button onClick={() => importRef.current?.click()}>Import</button>
-            <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
-            <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
-            {currentUser ? (
-              <>
-                <div className="user-pill">
-                  {currentUser.picture ? (
-                    <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />
-                  ) : (
-                    <div className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</div>
-                  )}
-                  <span className="user-name">{currentUser.name}</span>
-                </div>
-                <button onClick={() => handleSignOut()}>Log out</button>
-              </>
-            ) : (
-              <button onClick={() => handleSignIn()}>Sign in with Google</button>
-            )}
-            {/* Mobile hamburger */}
-            <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
-            {menuOpen && (
-              <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-                <button onClick={() => { handleExport(); }}>Export</button>
-                <button onClick={() => { importRef.current?.click(); }}>Import</button>
-                <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
-                {currentUser ? (
-                  <button onClick={() => { handleSignOut(); }}>Log out</button>
-                ) : (
-                  <button onClick={() => { handleSignIn(); }}>Sign in</button>
-                )}
-              </div>
-            )}
-          </nav>
-        </header>
+        <div className="dashboard">
+          <header className="app-header">
+            <h1>📺 TV Tracker</h1>
+            <nav className="header-nav">
+              <button onClick={() => handleExport()}>Export</button>
+              <button onClick={() => importRef.current?.click()}>Import</button>
+              <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
+                     onChange={handleImport}/>
+              <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+              {currentUser ? (
+                  <>
+                    <div className="user-pill">
+                      {currentUser.picture ? (
+                          <img src={currentUser.picture} alt={currentUser.name}
+                               className="user-avatar"/>
+                      ) : (
+                          <div
+                              className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}</div>
+                      )}
+                      <span className="user-name">{currentUser.name}</span>
+                    </div>
+                    <button onClick={() => handleSignOut()}>Log out</button>
+                  </>
+              ) : (
+                  <button onClick={() => handleSignIn()}>Sign in with Google</button>
+              )}
+              {/* Mobile hamburger */}
+              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+                      aria-label="Open menu">☰
+              </button>
+              {menuOpen && (
+                  <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+                    <button onClick={() => {
+                      handleExport();
+                    }}>Export
+                    </button>
+                    <button onClick={() => {
+                      importRef.current?.click();
+                    }}>Import
+                    </button>
+                    <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
+                    {currentUser ? (
+                        <button onClick={() => {
+                          handleSignOut();
+                        }}>Log out</button>
+                    ) : (
+                        <button onClick={() => {
+                          handleSignIn();
+                        }}>Sign in</button>
+                    )}
+                  </div>
+              )}
+            </nav>
+          </header>
 
-        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
 
-        <div className="tabs">
-          {TABS.map(t => (
-            <button
-              key={t.value}
-              className={tab === t.value ? 'tab active' : 'tab'}
-              onClick={() => setTab(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="popular-grid" ref={el => { popularRef.current = el; }}>
-          {popularShows.map(p => (
-            <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
-              {p.posterPath && <img src={p.posterPath} alt={p.title} />}
-              <div className="popular-title">{p.title}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-          <button className="auth-button" onClick={() => {
-            // add one more row
-            const container = popularRef.current || document.documentElement;
-            const width = container.getBoundingClientRect().width || window.innerWidth;
-            const minCard = 160 + 16;
-            let cols = Math.max(1, Math.floor(width / minCard));
-            if (width < 600) cols = 3;
-            const nextRows = Math.max(1, popularRows) + 1;
-            const nextLimit = nextRows * cols;
-            setPopularRows(nextRows);
-            api.getPopular(nextLimit).then(shows => { const unique = dedupeShows(shows); setPopularShows(unique); }).catch(() => setPopularShows([]));
-          }}>Explore more</button>
-        </div>
-
-        <ScrollToTop />
-
-        {selected && (
-          <ShowDetail
-            show={selected}
-            onClose={handleCloseModal}
-            onUpdate={handleUpdate}
-            onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
-          />
-        )}
-
-        {preview && (
-          <SearchPreview
-            result={preview}
-            onClose={handleCloseModal}
-            onTrack={handleAdd}
-            trackedShow={trackedForResult(preview)}
-            onUpdate={handleUpdate}
-          />
-        )}
-
-        {authPromptPayload && (
-          <div className="modal-overlay" onClick={cancelAuthPrompt}>
-            <div className="modal" onClick={e => e.stopPropagation()}>
-              <h3>Sign in required</h3>
-              <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button onClick={cancelAuthPrompt}>Cancel</button>
-                <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
-              </div>
-            </div>
+          <div className="tabs">
+            {TABS.map(t => (
+                <button
+                    key={t.value}
+                    className={tab === t.value ? 'tab active' : 'tab'}
+                    onClick={() => setTab(t.value)}
+                >
+                  {t.label}
+                </button>
+            ))}
           </div>
-        )}
 
-      </div>
+          <div className="popular-grid" ref={el => {
+            popularRef.current = el;
+          }}>
+            {popularShows.map(p => (
+                <div key={p.tmdbId} className="popular-card" onClick={() => handlePreview(p)}>
+                  {p.posterPath && <img src={p.posterPath} alt={p.title}/>}
+                  <div className="popular-title">{p.title}</div>
+                </div>
+            ))}
+          </div>
+          <div style={{textAlign: 'center', marginTop: '1rem'}}>
+            <button className="auth-button" onClick={() => {
+              // add one more row
+              const container = popularRef.current || document.documentElement;
+              const width = container.getBoundingClientRect().width || window.innerWidth;
+              const minCard = 160 + 16;
+              let cols = Math.max(1, Math.floor(width / minCard));
+              if (width < 600) cols = 3;
+              const nextRows = Math.max(1, popularRows) + 1;
+              const nextLimit = nextRows * cols;
+              setPopularRows(nextRows);
+              api.getPopular(nextLimit).then(shows => {
+                const unique = dedupeShows(shows);
+                setPopularShows(unique);
+              }).catch(() => setPopularShows([]));
+            }}>Explore more
+            </button>
+          </div>
+
+          <ScrollToTop/>
+
+          {selected && (
+              <ShowDetail
+                  show={selected}
+                  onClose={handleCloseModal}
+                  onUpdate={handleUpdate}
+                  onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
+              />
+          )}
+
+          {preview && (
+              <SearchPreview
+                  result={preview}
+                  onClose={handleCloseModal}
+                  onTrack={handleAdd}
+                  trackedShow={trackedForResult(preview)}
+                  onUpdate={handleUpdate}
+              />
+          )}
+
+          {authPromptPayload && (
+              <div className="modal-overlay" onClick={cancelAuthPrompt}>
+                <div className="modal" onClick={e => e.stopPropagation()}>
+                  <h3>Sign in required</h3>
+                  <p>You need to sign in with your Google account to track shows. Continue to sign
+                    in?</p>
+                  <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    justifyContent: 'flex-end',
+                    marginTop: '1rem'
+                  }}>
+                    <button onClick={cancelAuthPrompt}>Cancel</button>
+                    <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+                  </div>
+                </div>
+              </div>
+          )}
+
+        </div>
     );
   }
 
   if (authLoading) {
     return (
-      <div className="dashboard">
-        <header className="app-header">
-          <h1>📺 TV Tracker</h1>
-        </header>
-        <div className="auth-gate">
-          <p>Loading…</p>
+        <div className="dashboard">
+          <header className="app-header">
+            <h1>📺 TV Tracker</h1>
+          </header>
+          <div className="auth-gate">
+            <p>Loading…</p>
+          </div>
         </div>
-      </div>
     );
   }
 
   if (!currentUser) {
     return (
-      <div className="dashboard">
-        <header className="app-header">
-          <h1>📺 TV Tracker</h1>
-          <nav className="header-nav">
-            <button onClick={() => handleSignIn()}>Sign in with Google</button>
-            <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
-            {menuOpen && (
-              <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-                <button onClick={() => handleSignIn()}>Sign in</button>
-              </div>
-            )}
-          </nav>
-        </header>
+        <div className="dashboard">
+          <header className="app-header">
+            <h1>📺 TV Tracker</h1>
+            <nav className="header-nav">
+              <button onClick={() => handleSignIn()}>Sign in with Google</button>
+              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+                      aria-label="Open menu">☰
+              </button>
+              {menuOpen && (
+                  <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+                    <button onClick={() => handleSignIn()}>Sign in</button>
+                  </div>
+              )}
+            </nav>
+          </header>
 
-        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
 
-        <div className="tabs">
-          {TABS.map(t => (
-            <button
-              key={t.value}
-              className={tab === t.value ? 'tab active' : 'tab'}
-              onClick={() => setTab(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {(tab as any) === 'POPULAR' ? (
-          <div className="popular-grid">
-            {popularShows.map(p => (
-              <div key={p.tmdbId ?? p.tvmazeId ?? p.title} className="popular-card" onClick={() => handlePreview(p)}>
-                {p.posterPath && <img src={p.posterPath} alt={p.title} />}
-                <div className="popular-title">{p.title}</div>
-              </div>
+          <div className="tabs">
+            {TABS.map(t => (
+                <button
+                    key={t.value}
+                    className={tab === t.value ? 'tab active' : 'tab'}
+                    onClick={() => setTab(t.value)}
+                >
+                  {t.label}
+                </button>
             ))}
           </div>
-        ) : (
-          <div className="auth-gate">
-            <h2>Sign in to continue</h2>
-            <p>Use your Google account to access your personal TV library.</p>
-            <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue with Google</button>
-          </div>
-        )}
 
-        {selected && (
-          <ShowDetail
-            show={selected}
-            onClose={handleCloseModal}
-            onUpdate={handleUpdate}
-            onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
-          />
-        )}
-
-        {preview && (
-          <SearchPreview
-            result={preview}
-            onClose={handleCloseModal}
-            onTrack={handleAdd}
-            trackedShow={trackedForResult(preview)}
-            onUpdate={handleUpdate}
-          />
-        )}
-
-        {authPromptPayload && (
-          <div className="modal-overlay" onClick={cancelAuthPrompt}>
-            <div className="modal" onClick={e => e.stopPropagation()}>
-              <h3>Sign in required</h3>
-              <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button onClick={cancelAuthPrompt}>Cancel</button>
-                <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+          {(tab as any) === 'POPULAR' ? (
+              <div className="popular-grid">
+                {popularShows.map(p => (
+                    <div key={p.tmdbId ?? p.tvmazeId ?? p.title} className="popular-card"
+                         onClick={() => handlePreview(p)}>
+                      {p.posterPath && <img src={p.posterPath} alt={p.title}/>}
+                      <div className="popular-title">{p.title}</div>
+                    </div>
+                ))}
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+          ) : (
+              <div className="auth-gate">
+                <h2>Sign in to continue</h2>
+                <p>Use your Google account to access your personal TV library.</p>
+                <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue
+                  with Google
+                </button>
+              </div>
+          )}
+
+          {selected && (
+              <ShowDetail
+                  show={selected}
+                  onClose={handleCloseModal}
+                  onUpdate={handleUpdate}
+                  onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
+              />
+          )}
+
+          {preview && (
+              <SearchPreview
+                  result={preview}
+                  onClose={handleCloseModal}
+                  onTrack={handleAdd}
+                  trackedShow={trackedForResult(preview)}
+                  onUpdate={handleUpdate}
+              />
+          )}
+
+          {authPromptPayload && (
+              <div className="modal-overlay" onClick={cancelAuthPrompt}>
+                <div className="modal" onClick={e => e.stopPropagation()}>
+                  <h3>Sign in required</h3>
+                  <p>You need to sign in with your Google account to track shows. Continue to sign
+                    in?</p>
+                  <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    justifyContent: 'flex-end',
+                    marginTop: '1rem'
+                  }}>
+                    <button onClick={cancelAuthPrompt}>Cancel</button>
+                    <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+                  </div>
+                </div>
+              </div>
+          )}
+        </div>
     );
   }
 
   return (
-    <div className="dashboard">
-      <header className="app-header">
-        <h1>📺 TV Tracker</h1>
-        <nav className="header-nav">
-          <button onClick={handleExport}>Export</button>
-          <button onClick={() => importRef.current?.click()}>Import</button>
-          <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
-          <RefreshButton onDone={() => api.getShows().then(setAllShows)} />
-          <div className="user-pill">
-            {currentUser.picture ? (
-              <img src={currentUser.picture} alt={currentUser.name} className="user-avatar" />
-            ) : (
-              <div className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0,2).join('').toUpperCase()}</div>
+      <div className="dashboard">
+        <header className="app-header">
+          <h1>📺 TV Tracker</h1>
+          <nav className="header-nav">
+            <button onClick={handleExport}>Export</button>
+            <button onClick={() => importRef.current?.click()}>Import</button>
+            <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
+                   onChange={handleImport}/>
+            <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+            <div className="user-pill">
+              {currentUser.picture ? (
+                  <img src={currentUser.picture} alt={currentUser.name} className="user-avatar"/>
+              ) : (
+                  <div
+                      className="avatar-initials">{(currentUser.name || '').split(' ').map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}</div>
+              )}
+              <span className="user-name">{currentUser.name}</span>
+            </div>
+            <button onClick={handleSignOut}>Log out</button>
+            <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+                    aria-label="Open menu">☰
+            </button>
+            {menuOpen && (
+                <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
+                  <button onClick={() => handleExport()}>Export</button>
+                  <button onClick={() => importRef.current?.click()}>Import</button>
+                  <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
+                  <button onClick={() => handleSignOut()}>Log out</button>
+                </div>
             )}
-            <span className="user-name">{currentUser.name}</span>
-          </div>
-          <button onClick={handleSignOut}>Log out</button>
-          <button className="hamburger" onClick={() => setMenuOpen(o => !o)} aria-label="Open menu">☰</button>
-          {menuOpen && (
-            <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-              <button onClick={() => handleExport()}>Export</button>
-              <button onClick={() => importRef.current?.click()}>Import</button>
-              <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
-              <button onClick={() => handleSignOut()}>Log out</button>
-            </div>
-          )}
-        </nav>
-      </header>
+          </nav>
+        </header>
 
-      <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview} />
+        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
 
-      <div className="tabs">
-        {TABS.map(t => (
-          <button
-            key={t.value}
-            className={tab === t.value ? 'tab active' : 'tab'}
-            onClick={() => setTab(t.value)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <div className="tabs">
+          {TABS.map(t => (
+              <button
+                  key={t.value}
+                  className={tab === t.value ? 'tab active' : 'tab'}
+                  onClick={() => setTab(t.value)}
+              >
+                {t.label}
+              </button>
+          ))}
+        </div>
 
-      {groups ? (
-        groups.length === 0
-          ? <p className="empty">No shows yet. Search and add one!</p>
-          : groups.map((g, i) => (
-              <div key={g.status}>
-                {i > 0 && <hr className="section-divider" />}
-                <h2 className="section-heading">{STATUS_LABELS[g.status]}</h2>
-                <DraggableGrid {...gridProps} visibleShows={g.shows} />
+        {groups ? (
+            groups.length === 0
+                ? <p className="empty">No shows yet. Search and add one!</p>
+                : groups.map((g, i) => (
+                    <div key={g.status}>
+                      {i > 0 && <hr className="section-divider"/>}
+                      <h2 className="section-heading">{STATUS_LABELS[g.status]}</h2>
+                      <DraggableGrid {...gridProps} visibleShows={g.shows}/>
+                    </div>
+                ))
+        ) : (
+            visibleShows.length === 0
+                ? <p className="empty">No shows here yet.</p>
+                : <DraggableGrid {...gridProps} visibleShows={visibleShows}/>
+        )}
+
+        {selected && (
+            <ShowDetail
+                show={selected}
+                onClose={handleCloseModal}
+                onUpdate={handleUpdate}
+                onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
+            />
+        )}
+
+        {preview && (
+            <SearchPreview
+                result={preview}
+                onClose={handleCloseModal}
+                onTrack={handleAdd}
+                trackedShow={trackedForResult(preview)}
+                onUpdate={handleUpdate}
+            />
+        )}
+
+        {authPromptPayload && (
+            <div className="modal-overlay" onClick={cancelAuthPrompt}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <h3>Sign in required</h3>
+                <p>You need to sign in with your Google account to track shows. Continue to sign
+                  in?</p>
+                <div style={{
+                  display: 'flex',
+                  gap: 8,
+                  justifyContent: 'flex-end',
+                  marginTop: '1rem'
+                }}>
+                  <button onClick={cancelAuthPrompt}>Cancel</button>
+                  <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
+                </div>
               </div>
-            ))
-      ) : (
-        visibleShows.length === 0
-          ? <p className="empty">No shows here yet.</p>
-          : <DraggableGrid {...gridProps} visibleShows={visibleShows} />
-      )}
-
-      {selected && (
-        <ShowDetail
-          show={selected}
-          onClose={handleCloseModal}
-          onUpdate={handleUpdate}
-          onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
-        />
-      )}
-
-      {preview && (
-        <SearchPreview
-          result={preview}
-          onClose={handleCloseModal}
-          onTrack={handleAdd}
-          trackedShow={trackedForResult(preview)}
-          onUpdate={handleUpdate}
-        />
-      )}
-
-      {authPromptPayload && (
-        <div className="modal-overlay" onClick={cancelAuthPrompt}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3>Sign in required</h3>
-            <p>You need to sign in with your Google account to track shows. Continue to sign in?</p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
-              <button onClick={cancelAuthPrompt}>Cancel</button>
-              <button className="auth-button" onClick={continueAuthPrompt}>Continue</button>
             </div>
-          </div>
-        </div>
-      )}
+        )}
 
-      <ScrollToTop />
+        <ScrollToTop/>
 
-      {importToast && (
-        <div className="import-toast" onClick={() => setImportToast(null)}>
-          ⚠️ {importToast}
-        </div>
-      )}
+        {importToast && (
+            <div className="import-toast" onClick={() => setImportToast(null)}>
+              ⚠️ {importToast}
+            </div>
+        )}
 
-      {importing && (
-        <div className="import-overlay">
-          <div className="import-spinner" />
-          <p>Importing & fetching metadata…</p>
-        </div>
-      )}
-    </div>
+        {importing && (
+            <div className="import-overlay">
+              <div className="import-spinner"/>
+              <p>Importing & fetching metadata…</p>
+            </div>
+        )}
+      </div>
   );
 }
