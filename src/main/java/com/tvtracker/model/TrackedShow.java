@@ -24,16 +24,31 @@ public class TrackedShow {
     public void recalculateStatus() {
         if (watchStatus == WatchStatus.DROPPED) return;
 
-        boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes.stream().anyMatch(e -> e.watched));
-        // If any season has no episodes (even trailing), treat the show as not all-watched —
-        // this indicates an incomplete or announced season and should prevent FINISHED/UP_TO_DATE
-        boolean hasEmptySeason = seasons.stream().anyMatch(s -> s.episodes == null || s.episodes.isEmpty());
+        boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes != null && s.episodes.stream().anyMatch(e -> e.watched));
+
+        int lastNonEmptySeason = seasons.stream()
+                .filter(s -> s.episodes != null && !s.episodes.isEmpty())
+                .mapToInt(s -> s.number)
+                .max()
+                .orElse(0);
+
+        boolean hasFutureUnreleasedSeason = seasons.stream()
+                .filter(s -> s.number > lastNonEmptySeason)
+                .anyMatch(s -> s.episodes == null || s.episodes.isEmpty());
+
         boolean allWatched;
-        if (hasEmptySeason) {
+        if (lastNonEmptySeason == 0) {
             allWatched = false;
         } else {
-            // No empty seasons — require all seasons to be fully watched
-            allWatched = seasons.stream().allMatch(Season::allWatched);
+            final int cutoff = lastNonEmptySeason;
+            boolean allAvailableSeasonWatched = seasons.stream()
+                    .filter(s -> s.number <= cutoff)
+                    .allMatch(Season::allWatched);
+            if (productionStatus == ProductionStatus.ONGOING) {
+                allWatched = allAvailableSeasonWatched;
+            } else {
+                allWatched = allAvailableSeasonWatched && !hasFutureUnreleasedSeason;
+            }
         }
 
         if (!anyWatched) {
