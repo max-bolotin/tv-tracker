@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/data")
@@ -65,8 +66,9 @@ public class DataController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<String> refresh() {
-        scheduler.doCheck();
-        return ResponseEntity.ok("Refresh complete.");
+    public ResponseEntity<Map<String, String>> refresh() {
+        String userId = CurrentUserContext.currentUserId();
+        scheduler.doCheck(userId);
+        return ResponseEntity.ok(Map.of("message", "Refresh complete."));
     }
 }

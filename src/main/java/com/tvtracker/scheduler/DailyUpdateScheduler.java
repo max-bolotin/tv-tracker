@@ -33,8 +33,14 @@ public class DailyUpdateScheduler {
 
     /** Called by the manual refresh endpoint — same logic, no cron restriction. */
     public void doCheck() {
+        // default behavior (used by scheduler) operates on the default user file
+        doCheck("default");
+    }
+
+    /** Refresh check for a specific user. */
+    public void doCheck(String userId) {
         try {
-            List<TrackedShow> shows = storage.loadAll();
+            List<TrackedShow> shows = storage.loadAll(userId);
             List<TrackedShow> upToDate = shows.stream()
                     .filter(s -> s.watchStatus == WatchStatus.UP_TO_DATE)
                     .toList();
@@ -59,7 +65,7 @@ public class DailyUpdateScheduler {
                         } else {
                             log.info("Show '{}' was updated but has no new episodes — keeping UP_TO_DATE", show.title);
                         }
-                        storage.save(show);
+                        storage.save(userId, show);
                         anyChanged = true;
                     } catch (Exception e) {
                         log.warn("Failed to refresh show '{}': {}", show.title, e.getMessage());
@@ -75,12 +81,12 @@ public class DailyUpdateScheduler {
                 WatchStatus before = show.watchStatus;
                 show.recalculateStatus();
                 if (show.watchStatus != before) {
-                    storage.save(show);
+                    storage.save(userId, show);
                     log.info("Show '{}' healed: {} → {}", show.title, before, show.watchStatus);
                 }
             }
         } catch (Exception e) {
-            log.error("Daily update check failed", e);
+            log.error("Daily update check failed for user {}", userId, e);
         }
     }
 
