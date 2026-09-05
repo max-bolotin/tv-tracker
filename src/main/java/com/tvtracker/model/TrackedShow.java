@@ -24,17 +24,31 @@ public class TrackedShow {
     public void recalculateStatus() {
         if (watchStatus == WatchStatus.DROPPED) return;
 
-        boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes.stream().anyMatch(e -> e.watched));
-        // Ignore trailing empty seasons when determining "all watched" — consider only seasons up to the last one that has episodes
-        int lastNonEmpty = seasons.stream().filter(s -> s.episodes != null && !s.episodes.isEmpty()).mapToInt(s -> s.number).max().orElse(0);
+        boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes != null && s.episodes.stream().anyMatch(e -> e.watched));
+
+        int lastNonEmptySeason = seasons.stream()
+                .filter(s -> s.episodes != null && !s.episodes.isEmpty())
+                .mapToInt(s -> s.number)
+                .max()
+                .orElse(0);
+
+        boolean hasFutureUnreleasedSeason = seasons.stream()
+                .filter(s -> s.number > lastNonEmptySeason)
+                .anyMatch(s -> s.episodes == null || s.episodes.isEmpty());
+
         boolean allWatched;
-        if (lastNonEmpty == 0) {
+        if (lastNonEmptySeason == 0) {
             allWatched = false;
         } else {
-            final int cutoff = lastNonEmpty;
-            allWatched = seasons.stream()
+            final int cutoff = lastNonEmptySeason;
+            boolean allAvailableSeasonWatched = seasons.stream()
                     .filter(s -> s.number <= cutoff)
                     .allMatch(Season::allWatched);
+            if (productionStatus == ProductionStatus.ONGOING) {
+                allWatched = allAvailableSeasonWatched;
+            } else {
+                allWatched = allAvailableSeasonWatched && !hasFutureUnreleasedSeason;
+            }
         }
 
         if (!anyWatched) {
@@ -55,6 +69,10 @@ public class TrackedShow {
     public void setTmdbId(Long tmdbId) { this.tmdbId = tmdbId; }
     public Long getTvmazeId() { return tvmazeId; }
     public void setTvmazeId(Long tvmazeId) { this.tvmazeId = tvmazeId; }
+    // Kept intentionally for future compatibility (e.g. storing IMDB ratings / integration).
+    // Currently, the codebase accesses the public field directly, but these accessors
+    // may be used by frameworks or future features. Do not remove unless refactoring
+    // the model to use private fields and property access throughout.
     public String getImdbId() { return imdbId; }
     public void setImdbId(String imdbId) { this.imdbId = imdbId; }
     public String getTitle() { return title; }
