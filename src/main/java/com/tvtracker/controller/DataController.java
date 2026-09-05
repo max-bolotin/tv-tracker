@@ -52,14 +52,14 @@ public class DataController {
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ImportResult> importData(@RequestParam("file") MultipartFile file) throws Exception {
         String userId = CurrentUserContext.currentUserId();
-        log.info("Import started, file size: {} bytes", file.getSize());
+        log.debug("Import started, file size: {} bytes", file.getSize());
 
         // Stream the multipart to avoid loading entire file into memory
         try (var in = file.getInputStream()) {
             ImportExportPayload payload = mapper.readValue(in, ImportExportPayload.class);
             ImportService.ImportResult result = importService.resolve(payload);
             storage.saveAll(userId, result.shows());
-            log.info("Import complete: {} shows saved, {} stubs: {}",
+            log.debug("Import complete: {} shows saved, {} stubs: {}",
                     result.shows().size(), result.stubTitles().size(), result.stubTitles());
             return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
         }

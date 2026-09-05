@@ -61,7 +61,7 @@ public class MetadataService {
             log.warn("fetchDetails: parallel fetch join failed: {}", e.getMessage());
         }
 
-        log.info("fetchDetails: tmdbId={}, tvmazeId={}, fromTmdb={}, fromTvmaze={}", tmdbId, tvmazeId, fromTmdb != null, fromTvmaze != null);
+        log.debug("fetchDetails: tmdbId={}, tvmazeId={}, fromTmdb={}, fromTvmaze={}", tmdbId, tvmazeId, fromTmdb != null, fromTvmaze != null);
 
         // If we have both, merge preferring TMDB for basic metadata and choosing the provider with more episode data per season
         if (fromTmdb != null && fromTvmaze != null) {
@@ -82,8 +82,8 @@ public class MetadataService {
 
             java.util.List<com.tvtracker.model.Season> mergedSeasons = new java.util.ArrayList<>();
             for (Integer num : seasonNums) {
-                com.tvtracker.model.Season tSeason = fromTmdb.seasons.stream().filter(s -> s.number == num).findFirst().orElse(null);
-                com.tvtracker.model.Season vSeason = fromTvmaze.seasons.stream().filter(s -> s.number == num).findFirst().orElse(null);
+                com.tvtracker.model.Season tSeason = (fromTmdb.seasons == null) ? null : fromTmdb.seasons.stream().filter(s -> s.number == num).findFirst().orElse(null);
+                com.tvtracker.model.Season vSeason = (fromTvmaze.seasons == null) ? null : fromTvmaze.seasons.stream().filter(s -> s.number == num).findFirst().orElse(null);
 
                 int tCount = tSeason == null || tSeason.episodes == null ? 0 : tSeason.episodes.size();
                 int vCount = vSeason == null || vSeason.episodes == null ? 0 : vSeason.episodes.size();
@@ -94,8 +94,8 @@ public class MetadataService {
                     if (tCount >= vCount) { chosen = tSeason; chosenBy = "TMDB"; } else { chosen = vSeason; chosenBy = "TVMAZE"; }
                 } else if (tSeason != null) { chosen = tSeason; chosenBy = "TMDB"; } else if (vSeason != null) { chosen = vSeason; chosenBy = "TVMAZE"; }
 
-                // If chosen has no episodes but TMDB is available, try to re-fetch from TMDB directly
-                if ((chosen == null || chosen.episodes == null || chosen.episodes.isEmpty()) && fromTmdb != null && tmdb.isConfigured()) {
+                // If chosen has no episodes but TMDB is configured, try to re-fetch from TMDB directly
+                if ((chosen == null || chosen.episodes == null || chosen.episodes.isEmpty()) && tmdb.isConfigured()) {
                     try {
                         var seasonRefetch = tmdb.fetchSeason(fromTmdb.tmdbId, num);
                         if (seasonRefetch != null && seasonRefetch.episodes != null && !seasonRefetch.episodes.isEmpty()) {
@@ -105,12 +105,12 @@ public class MetadataService {
                     } catch (Exception ignore) { /* already logged fetchSeason inside tmdb provider */ }
                 }
 
-                log.info("fetchDetails: show='{}' season={} tCount={} vCount={} chosen={}", merged.title, num, tCount, vCount, chosenBy);
+                log.debug("fetchDetails: show='{}' season={} tCount={} vCount={} chosen={}", merged.title, num, tCount, vCount, chosenBy);
 
                 if (chosen == null) chosen = new com.tvtracker.model.Season(num);
                 // Skip season number 0 (special/behind-the-scenes) intentionally
                 if (chosen.number == 0) {
-                    log.info("fetchDetails: skipping season number 0 for show='{}'", merged.title);
+                    log.debug("fetchDetails: skipping season number 0 for show='{}'", merged.title);
                     continue;
                 }
                 com.tvtracker.model.Season copy = new com.tvtracker.model.Season(chosen.number);
@@ -125,16 +125,16 @@ public class MetadataService {
                     }
                 }
                 // Only include seasons with episodes
-                if (copy.episodes != null && !copy.episodes.isEmpty()) {
+                if (!copy.episodes.isEmpty()) {
                     mergedSeasons.add(copy);
                 } else {
-                    log.info("fetchDetails: skipping empty season {} for show='{}'", num, merged.title);
+                    log.debug("fetchDetails: skipping empty season {} for show='{}'", num, merged.title);
                 }
             }
             merged.seasons = mergedSeasons;
             merged.totalSeasons = mergedSeasons.size();
             merged.watchStatus = fromTmdb.watchStatus != null ? fromTmdb.watchStatus : fromTvmaze.watchStatus;
-            log.info("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}", merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
+            log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}", merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
             return merged;
         }
 

@@ -33,7 +33,13 @@ const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
-  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>('POPULAR');
+  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>(() => {
+    try { return (localStorage.getItem('tab') as any) || 'POPULAR'; } catch { return 'POPULAR'; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('tab', tab as string); } catch {}
+  }, [tab]);
   const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
   const popularRef = useRef<HTMLDivElement | null>(null);
   const [popularRows, setPopularRows] = useState(0); // number of rows currently requested

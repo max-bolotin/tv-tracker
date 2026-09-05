@@ -53,7 +53,7 @@ public class ShowController {
 
     /** Fetch full show details from metadata provider WITHOUT persisting */
     @GetMapping("/details")
-    public TrackedShow details(@RequestParam(required = false) Long tmdbId, @RequestParam(required = false) Long tvmazeId) throws IOException {
+    public TrackedShow details(@RequestParam(required = false) Long tmdbId, @RequestParam(required = false) Long tvmazeId) {
         return metadata.fetchDetails(tmdbId, tvmazeId);
     }
 
@@ -161,7 +161,7 @@ public class ShowController {
             int maxExisting = existing.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
             int maxFresh = fresh.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
             boolean wasUpToDate = existing.watchStatus == WatchStatus.UP_TO_DATE;
-            log.info("refreshShow: {} maxExisting={}, maxFresh={}, wasUpToDate={}", existing.title, maxExisting, maxFresh, wasUpToDate);
+            log.debug("refreshShow: {} maxExisting={}, maxFresh={}, wasUpToDate={}", existing.title, maxExisting, maxFresh, wasUpToDate);
             if (wasUpToDate) {
             // check whether any of the new seasons contain episodes OR any existing season was empty but now has episodes
             boolean newHasEpisodes = fresh.seasons.stream().anyMatch(fs -> {
@@ -173,17 +173,17 @@ public class ShowController {
                     return (es.episodes == null || es.episodes.isEmpty()) && fs.episodes != null && !fs.episodes.isEmpty();
                 }
             });
-            log.info("refreshShow: {} newHasEpisodes={}", existing.title, newHasEpisodes);
+            log.debug("refreshShow: {} newHasEpisodes={}", existing.title, newHasEpisodes);
             if (newHasEpisodes) {
                 fresh.watchStatus = WatchStatus.WATCHING_NOW;
-                log.info("refreshShow: {} moved to WATCHING_NOW (new episodes added)", existing.title);
+                log.debug("refreshShow: {} moved to WATCHING_NOW (new episodes added)", existing.title);
             }
             }
         } catch (Exception e) {
             log.warn("refreshShow: failed to evaluate watch status change for {}: {}", existing.title, e.getMessage());
         }
         TrackedShow saved = storage.save(userId, fresh);
-        log.info("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
+        log.debug("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
         return saved;
     }
 

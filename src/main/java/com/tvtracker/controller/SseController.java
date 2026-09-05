@@ -37,6 +37,6 @@ public class SseController {
                 // dead connection — browser navigated away, not an error
             }
         }
-        log.info("SSE broadcast sent to {} clients", clients.size());
+        log.debug("SSE broadcast sent to {} clients", clients.size());
     }
 }
