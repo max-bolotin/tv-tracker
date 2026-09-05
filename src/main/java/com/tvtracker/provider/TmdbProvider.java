@@ -75,42 +75,61 @@ public class TmdbProvider implements MetadataProvider {
             show.tmdbId = tmdbId;
             show.title = root.path("name").asText();
             show.overview = root.path("overview").asText();
-            show.totalSeasons = root.path("number_of_seasons").asInt();
+            // Prefer to enumerate seasons from the 'seasons' array so we include any season entries
+            JsonNode seasonsArr = root.path("seasons");
             String poster = root.path("poster_path").asText(null);
             show.posterPath = poster != null ? imageBaseUrl + poster : null;
             String status = root.path("status").asText("");
             show.productionStatus = status.equalsIgnoreCase("Ended") || status.equalsIgnoreCase("Canceled")
                     ? ProductionStatus.ENDED : ProductionStatus.ONGOING;
 
-            // Fetch each season
-            for (int s = 1; s <= show.totalSeasons; s++) {
-                Season season = fetchSeason(tmdbId, s);
-                if (season != null) show.seasons.add(season);
+            if (seasonsArr.isArray()) {
+                for (JsonNode sNode : seasonsArr) {
+                    int sNum = sNode.path("season_number").asInt();
+                    Season season = fetchSeason(tmdbId, sNum);
+                    // If fetchSeason failed, still include an empty Season to preserve seasonal info
+                    if (season == null) season = new Season(sNum);
+                    show.seasons.add(season);
+                }
+            } else {
+                // Fallback to number_of_seasons
+                show.totalSeasons = root.path("number_of_seasons").asInt();
+                for (int s = 1; s <= show.totalSeasons; s++) {
+                    Season season = fetchSeason(tmdbId, s);
+                    if (season == null) season = new Season(s);
+                    show.seasons.add(season);
+                }
             }
+            show.totalSeasons = show.seasons.size();
             return show;
         } catch (Exception e) {
             throw new RuntimeException("TMDB fetchDetails failed for id=" + tmdbId, e);
         }
     }
 
-    private Season fetchSeason(long tmdbId, int seasonNumber) {
+    // Made public so callers can attempt to re-fetch individual seasons when needed
+    public Season fetchSeason(long tmdbId, int seasonNumber) {
         try {
             String url = UriComponentsBuilder.fromUriString(baseUrl + "/tv/" + tmdbId + "/season/" + seasonNumber)
                     .queryParam("api_key", apiKey)
                     .toUriString();
             JsonNode root = get(url);
             Season season = new Season(seasonNumber);
-            for (JsonNode ep : root.path("episodes")) {
-                String airDate = ep.path("air_date").asText(null);
-                season.episodes.add(new Episode(
-                        ep.path("episode_number").asInt(),
-                        ep.path("name").asText(),
-                        airDate
-                ));
+            JsonNode eps = root.path("episodes");
+            if (eps.isArray()) {
+                for (JsonNode ep : eps) {
+                    String airDate = ep.path("air_date").asText(null);
+                    int epNum = ep.path("episode_number").asInt(0);
+                    if (epNum == 0) epNum = ep.path("number").asInt(0);
+                    String name = ep.path("name").asText(null);
+                    if (name == null) name = ep.path("title").asText("");
+                    if (epNum > 0) season.episodes.add(new Episode(epNum, name, airDate));
+                }
             }
             return season;
         } catch (Exception e) {
-            return null;
+            // On error return an empty season (do not drop season entry)
+            return new Season(seasonNumber);
         }
     }
 

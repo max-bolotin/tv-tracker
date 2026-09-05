@@ -25,7 +25,17 @@ public class TrackedShow {
         if (watchStatus == WatchStatus.DROPPED) return;
 
         boolean anyWatched = seasons.stream().anyMatch(s -> s.episodes.stream().anyMatch(e -> e.watched));
-        boolean allWatched = !seasons.isEmpty() && seasons.stream().allMatch(Season::allWatched);
+        // Ignore trailing empty seasons when determining "all watched" — consider only seasons up to the last one that has episodes
+        int lastNonEmpty = seasons.stream().filter(s -> s.episodes != null && !s.episodes.isEmpty()).mapToInt(s -> s.number).max().orElse(0);
+        boolean allWatched;
+        if (lastNonEmpty == 0) {
+            allWatched = false;
+        } else {
+            final int cutoff = lastNonEmpty;
+            allWatched = seasons.stream()
+                    .filter(s -> s.number <= cutoff)
+                    .allMatch(Season::allWatched);
+        }
 
         if (!anyWatched) {
             watchStatus = WatchStatus.NOT_WATCHED;

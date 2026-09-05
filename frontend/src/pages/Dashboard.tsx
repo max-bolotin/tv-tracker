@@ -33,7 +33,13 @@ const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
-  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>('POPULAR');
+  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>(() => {
+    try { return (localStorage.getItem('tab') as any) || 'POPULAR'; } catch { return 'POPULAR'; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('tab', tab as string); } catch {}
+  }, [tab]);
   const [popularShows, setPopularShows] = useState<ShowSearchResult[]>([]);
   const popularRef = useRef<HTMLDivElement | null>(null);
   const [popularRows, setPopularRows] = useState(0); // number of rows currently requested
@@ -293,6 +299,23 @@ export function Dashboard() {
     if (msg) { sessionStorage.removeItem('importToast'); return msg; }
     return null;
   });
+
+  // listen for generic in-app toast events (e.g. refresh success/failure)
+  const toastTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const h = (e: any) => {
+      // clear previous timer
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      setImportToast(e.detail as string);
+      // auto-hide after 10s
+      toastTimer.current = window.setTimeout(() => setImportToast(null), 10000);
+    };
+    window.addEventListener('app-toast', h as EventListener);
+    return () => {
+      window.removeEventListener('app-toast', h as EventListener);
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
