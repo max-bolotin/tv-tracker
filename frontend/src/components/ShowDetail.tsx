@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TrackedShow, Episode, WatchStatus } from '../types';
 import { api } from '../api/client';
 
@@ -78,6 +78,10 @@ function applyAllWatched(show: TrackedShow, watched: boolean): TrackedShow {
 export function ShowDetail(props: Props) {
   const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus, onTrack, onUntrack } = props;
   const [show, setShow] = useState(initialShow);
+  // Keep local state in sync when parent updates the selected show (silent refreshes etc.)
+  useEffect(() => {
+    setShow(initialShow);
+  }, [initialShow]);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   const toggleExpand = (n: number) =>

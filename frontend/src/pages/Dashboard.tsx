@@ -59,6 +59,7 @@ export function Dashboard() {
   const searchBarRef = useRef<SearchBarHandle>(null);
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
+  const silentRefreshes = useRef(new Set<string>());
   const [menuOpen, setMenuOpen] = useState(false);
 
   function dedupeShows(shows: any[]) {
@@ -221,7 +222,24 @@ export function Dashboard() {
     return () => window.removeEventListener('popstate', onPop);
   }, [closeAll]);
 
-  const handleSelectShow = (show: TrackedShow) => openModal(() => setSelected(show));
+  const refreshShowSilently = useCallback(async (show: TrackedShow) => {
+    if (!show.id || silentRefreshes.current.has(show.id)) return;
+    silentRefreshes.current.add(show.id);
+    try {
+      const updated = await api.refreshShow(show.id);
+      setAllShows(prev => prev.map(s => s.id === show.id ? updated : s));
+      setSelected(prev => prev && prev.id === show.id ? updated : prev);
+    } catch (err) {
+      console.debug('[silent-refresh] failed for', show.title, err);
+    } finally {
+      silentRefreshes.current.delete(show.id);
+    }
+  }, []);
+
+  const handleSelectShow = (show: TrackedShow) => {
+    openModal(() => setSelected(show));
+    void refreshShowSilently(show);
+  };
   const handlePreview = (result: ShowSearchResult) => openModal(() => setPreview(result));
 
   const handleCloseModal = () => {
