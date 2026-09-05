@@ -295,10 +295,20 @@ export function Dashboard() {
   });
 
   // listen for generic in-app toast events (e.g. refresh success/failure)
+  const toastTimer = useRef<number | null>(null);
   useEffect(() => {
-    const h = (e: any) => setImportToast(e.detail as string);
+    const h = (e: any) => {
+      // clear previous timer
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      setImportToast(e.detail as string);
+      // auto-hide after 10s
+      toastTimer.current = window.setTimeout(() => setImportToast(null), 10000);
+    };
     window.addEventListener('app-toast', h as EventListener);
-    return () => window.removeEventListener('app-toast', h as EventListener);
+    return () => {
+      window.removeEventListener('app-toast', h as EventListener);
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
   }, []);
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {

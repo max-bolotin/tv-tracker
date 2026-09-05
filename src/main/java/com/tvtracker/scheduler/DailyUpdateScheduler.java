@@ -41,19 +41,27 @@ public class DailyUpdateScheduler {
     public void doCheck(String userId) {
         try {
             List<TrackedShow> shows = storage.loadAll(userId);
-            List<TrackedShow> upToDate = shows.stream()
-                    .filter(s -> s.watchStatus == WatchStatus.UP_TO_DATE)
-                    .toList();
-
-            if (upToDate.isEmpty()) return;
+            log.info("Daily update check for user {}: totalShows={}", userId, shows.size());
 
             Set<Long> updatedTmdb = Set.copyOf(metadata.fetchRecentlyUpdatedTmdbIds());
             Set<Long> updatedTvmaze = Set.copyOf(metadata.fetchRecentlyUpdatedTvmazeIds());
 
+            log.info("Updated TMDB ids count: {}, TVMaze ids count: {}", updatedTmdb.size(), updatedTvmaze.size());
+
             boolean anyChanged = false;
-            for (TrackedShow show : upToDate) {
-                boolean hasUpdate = (show.tmdbId != null && updatedTmdb.contains(show.tmdbId))
-                        || (show.tvmazeId != null && updatedTvmaze.contains(show.tvmazeId));
+            for (TrackedShow show : shows) {
+                // Always refresh all shows for a full refresh per user request
+                boolean matchTmdb = show.tmdbId != null && updatedTmdb.contains(show.tmdbId);
+                boolean matchTvmaze = show.tvmazeId != null && updatedTvmaze.contains(show.tvmazeId);
+                boolean hasUpdate = true; // force refresh for all shows
+
+                // If the stored show has empty seasons (placeholders), note it for logs
+                boolean hasEmptySeason = show.seasons.stream().anyMatch(s -> s.episodes == null || s.episodes.isEmpty());
+                if (hasEmptySeason) {
+                    log.info("Checking show '{}' has empty seasons — will refresh", show.title);
+                }
+
+                log.info("Checking show '{}' (tmdbId={}, tvmazeId={}) matchTmdb={} matchTvmaze={} hasEmptySeason={} willRefresh={}", show.title, show.tmdbId, show.tvmazeId, matchTmdb, matchTvmaze, hasEmptySeason, hasUpdate);
 
                 if (hasUpdate) {
                     try {
@@ -94,22 +102,38 @@ public class DailyUpdateScheduler {
     private boolean mergeNewEpisodes(TrackedShow existing, TrackedShow fresh) {
         boolean addedAny = false;
         for (var freshSeason : fresh.seasons) {
-            var existingSeason = existing.seasons.stream()
-                    .filter(s -> s.number == freshSeason.number).findFirst();
-            if (existingSeason.isEmpty()) {
-                // always add the season entry (even if empty) so we remember announced seasons
-                existing.seasons.add(freshSeason);
-                if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) addedAny = true;
-            } else {
-                var es = existingSeason.get();
-                for (var freshEp : freshSeason.episodes) {
-                    boolean alreadyExists = es.episodes.stream().anyMatch(e -> e.number == freshEp.number);
-                    if (!alreadyExists) {
-                        es.episodes.add(freshEp);
-                        addedAny = true;
-                    }
+        // skip season number 0
+        if (freshSeason.number == 0) {
+            log.info("mergeNewEpisodes: skipping season number 0 for show='{}'", existing.title);
+            continue;
+        }
+        var existingSeason = existing.seasons.stream()
+                .filter(s -> s.number == freshSeason.number).findFirst();
+        if (existingSeason.isEmpty()) {
+            // only add seasons that contain episodes (and skip episode number 0)
+            if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) {
+                var copy = new com.tvtracker.model.Season(freshSeason.number);
+                copy.episodes = new java.util.ArrayList<>();
+                for (var ep : freshSeason.episodes) {
+                    if (ep.number == 0) continue;
+                    copy.episodes.add(ep);
+                }
+                if (!copy.episodes.isEmpty()) {
+                    existing.seasons.add(copy);
+                    addedAny = true;
                 }
             }
+        } else if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) {
+            var es = existingSeason.get();
+            for (var freshEp : freshSeason.episodes) {
+                if (freshEp.number == 0) continue;
+                boolean alreadyExists = es.episodes.stream().anyMatch(e -> e.number == freshEp.number);
+                if (!alreadyExists) {
+                    es.episodes.add(freshEp);
+                    addedAny = true;
+                }
+            }
+        }
         }
         existing.totalSeasons = fresh.totalSeasons;
         existing.productionStatus = fresh.productionStatus;

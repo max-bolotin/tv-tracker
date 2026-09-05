@@ -49,7 +49,38 @@ public class JsonStorageService {
         if (!file.exists()) {
             return new ArrayList<>();
         }
-        return mapper.readValue(file, new TypeReference<>() {});
+        List<TrackedShow> shows = mapper.readValue(file, new TypeReference<>() {});
+        // Remove any seasons or episodes with number == 0 (excluded by policy), then recalc status and persist if changed
+        boolean changed = false;
+        for (TrackedShow s : shows) {
+            // remove season number 0 entirely
+            int beforeSeasons = s.seasons == null ? 0 : s.seasons.size();
+            if (s.seasons != null) {
+                s.seasons.removeIf(se -> se.number == 0);
+                for (var se : s.seasons) {
+                    if (se.episodes != null) {
+                        int beforeEps = se.episodes.size();
+                        se.episodes.removeIf(ep -> ep.number == 0);
+                        if (se.episodes.size() != beforeEps) changed = true;
+                    }
+                }
+            }
+            var before = s.watchStatus;
+            s.recalculateStatus();
+            if (s.watchStatus != before) changed = true;
+            if ((s.seasons == null ? 0 : s.seasons.size()) != beforeSeasons) changed = true;
+        }
+        if (changed) {
+            // write back quietly (no SSE broadcast) to avoid notification storms on simple reads
+            writeShowsToFile(file, shows, false);
+        }
+        return shows;
+    }
+
+    private void writeShowsToFile(File file, List<TrackedShow> shows, boolean broadcast) throws IOException {
+        ensureParentDirectory(file);
+        mapper.writerWithDefaultPrettyPrinter().writeValue(file, shows);
+        if (broadcast) sse.broadcast();
     }
 
     public synchronized void saveAll(List<TrackedShow> shows) throws IOException {
@@ -58,9 +89,7 @@ public class JsonStorageService {
 
     public synchronized void saveAll(String userId, List<TrackedShow> shows) throws IOException {
         File file = resolveUserFile(userId);
-        ensureParentDirectory(file);
-        mapper.writerWithDefaultPrettyPrinter().writeValue(file, shows);
-        sse.broadcast();
+        writeShowsToFile(file, shows, true);
     }
 
     public synchronized Optional<TrackedShow> findById(String id) throws IOException {

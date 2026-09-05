@@ -20,6 +20,7 @@ public class ShowController {
 
     private final JsonStorageService storage;
     private final MetadataService metadata;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ShowController.class);
 
     public ShowController(JsonStorageService storage, MetadataService metadata) {
         this.storage = storage;
@@ -159,17 +160,31 @@ public class ShowController {
         try {
             int maxExisting = existing.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
             int maxFresh = fresh.seasons.stream().mapToInt(s -> s.number).max().orElse(0);
-            if (existing.watchStatus == WatchStatus.UP_TO_DATE && maxFresh > maxExisting) {
-                // check whether any of the new seasons contain episodes
-                boolean newHasEpisodes = fresh.seasons.stream()
-                        .filter(s -> s.number > maxExisting)
-                        .anyMatch(s -> s.episodes != null && !s.episodes.isEmpty());
-                if (newHasEpisodes) {
-                    fresh.watchStatus = WatchStatus.WATCHING_NOW;
+            boolean wasUpToDate = existing.watchStatus == WatchStatus.UP_TO_DATE;
+            log.info("refreshShow: {} maxExisting={}, maxFresh={}, wasUpToDate={}", existing.title, maxExisting, maxFresh, wasUpToDate);
+            if (wasUpToDate) {
+            // check whether any of the new seasons contain episodes OR any existing season was empty but now has episodes
+            boolean newHasEpisodes = fresh.seasons.stream().anyMatch(fs -> {
+                var esOpt = existing.seasons.stream().filter(s -> s.number == fs.number).findFirst();
+                if (esOpt.isEmpty()) {
+                    return fs.episodes != null && !fs.episodes.isEmpty();
+                } else {
+                    var es = esOpt.get();
+                    return (es.episodes == null || es.episodes.isEmpty()) && fs.episodes != null && !fs.episodes.isEmpty();
                 }
+            });
+            log.info("refreshShow: {} newHasEpisodes={}", existing.title, newHasEpisodes);
+            if (newHasEpisodes) {
+                fresh.watchStatus = WatchStatus.WATCHING_NOW;
+                log.info("refreshShow: {} moved to WATCHING_NOW (new episodes added)", existing.title);
             }
-        } catch (Exception ignore) {}
-        return storage.save(userId, fresh);
+            }
+        } catch (Exception e) {
+            log.warn("refreshShow: failed to evaluate watch status change for {}: {}", existing.title, e.getMessage());
+        }
+        TrackedShow saved = storage.save(userId, fresh);
+        log.info("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
+        return saved;
     }
 
     record AddShowRequest(Long tmdbId, Long tvmazeId) {}
