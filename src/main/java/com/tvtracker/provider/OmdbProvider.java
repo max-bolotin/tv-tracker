@@ -57,7 +57,7 @@ public class OmdbProvider {
         try {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId + "&type=series");
             if (!"True".equals(root.path("Response").asText())) {
-                log.info("OMDb no result for show imdbId={}", show.imdbId);
+                log.debug("OMDb no result for show imdbId={}", show.imdbId);
                 return;
             }
             show.imdbRating = parseImdb(root);

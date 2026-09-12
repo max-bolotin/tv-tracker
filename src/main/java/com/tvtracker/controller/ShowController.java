@@ -200,13 +200,13 @@ public class ShowController {
     } else if (fresh.cast.isEmpty() && existing.cast != null && !existing.cast.isEmpty()) {
       long existingCastSize = existing.cast.size();
       long freshCastSize = fresh.cast.size();
-      log.info("refreshShow: keeping existing cast for '{}' because refreshed cast is empty (existing={} fresh={})",
+      log.debug("refreshShow: keeping existing cast for '{}' because refreshed cast is empty (existing={} fresh={})",
           existing.title, existingCastSize, freshCastSize);
       fresh.cast = existing.cast;
     }
     long existingCastCount = existing.cast == null ? 0L : (long) existing.cast.size();
     long freshCastCount = fresh.cast == null ? 0L : (long) fresh.cast.size();
-    log.info("refreshShow: cast summary for '{}' - existing={} fresh={}", existing.title,
+    log.debug("refreshShow: cast summary for '{}' - existing={} fresh={}", existing.title,
         existingCastCount, freshCastCount);
     // carry over watched flags for matching episodes
     for (var existingSeason : existing.seasons) {
