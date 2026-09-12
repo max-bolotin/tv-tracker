@@ -11,6 +11,8 @@ export interface Episode {
 export interface Season {
   number: number;
   episodes: Episode[];
+  imdbRating?: string;
+  rtRating?: string;
 }
 
 export interface TrackedShow {
@@ -25,6 +27,8 @@ export interface TrackedShow {
   productionStatus: ProductionStatus;
   watchStatus: WatchStatus;
   seasons: Season[];
+  imdbRating?: string;
+  rtRating?: string;
 }
 
 export interface ShowSearchResult {

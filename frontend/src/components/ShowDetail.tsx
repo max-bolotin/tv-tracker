@@ -225,6 +225,22 @@ export function ShowDetail(props: Props) {
               <span className={`badge status-${show.watchStatus.toLowerCase()}`}>
                 {show.watchStatus.replace(/_/g, ' ')}
               </span>
+              {show.imdbRating && (
+                <a
+                  className="rating-imdb"
+                  href={show.imdbId ? `https://www.imdb.com/title/${show.imdbId}/` : undefined}
+                  target={show.imdbId ? '_blank' : undefined}
+                  rel={show.imdbId ? 'noreferrer noopener' : undefined}
+                  aria-label={`IMDb rating ${show.imdbRating} out of 10`}
+                >
+                  <span aria-hidden="true">★</span> {show.imdbRating}/10
+                </a>
+              )}
+              {show.rtRating && (
+                <span className="rating-rt" aria-label={`Rotten Tomatoes score ${show.rtRating}`}>
+                  <span aria-hidden="true">🍅</span> {show.rtRating}
+                </span>
+              )}
             </div>
           </div>
         </div>

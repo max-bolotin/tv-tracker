@@ -18,10 +18,12 @@ public class MetadataService {
 
   private final TmdbProvider tmdb;
   private final TvMazeProvider tvmaze;
+  private final OmdbProvider omdb;
 
-  public MetadataService(TmdbProvider tmdb, TvMazeProvider tvmaze) {
+  public MetadataService(TmdbProvider tmdb, TvMazeProvider tvmaze, OmdbProvider omdb) {
     this.tmdb = tmdb;
     this.tvmaze = tvmaze;
+    this.omdb = omdb;
   }
 
   public List<ShowSearchResult> search(String query) {
@@ -175,16 +177,41 @@ public class MetadataService {
           fromTmdb.watchStatus != null ? fromTmdb.watchStatus : fromTvmaze.watchStatus;
       log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}",
           merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
+      enrichRatings(merged);
       return merged;
     }
 
-      if (fromTmdb != null) {
-          return fromTmdb;
-      }
-      if (fromTvmaze != null) {
-          return fromTvmaze;
-      }
+    if (fromTmdb != null) { enrichRatings(fromTmdb); return fromTmdb; }
+    if (fromTvmaze != null) { enrichRatings(fromTvmaze); return fromTvmaze; }
     throw new IllegalArgumentException("No valid external ID provided");
+  }
+
+  /**
+   * Resolves imdbId via TMDB external_ids if missing, then enriches show and season ratings via OMDb.
+   */
+  public void enrichRatings(TrackedShow show) {
+    if (!omdb.isConfigured()) return;
+    try {
+      if (show.imdbId == null && show.tmdbId != null && tmdb.isConfigured()) {
+        show.imdbId = tmdb.fetchImdbId(show.tmdbId);
+        log.info("enrichRatings: resolved imdbId={} for show='{}' via TMDB (tmdbId={})", show.imdbId, show.title, show.tmdbId);
+      }
+      if (show.imdbId == null && show.tvmazeId != null) {
+        show.imdbId = tvmaze.fetchImdbId(show.tvmazeId);
+        log.info("enrichRatings: resolved imdbId={} for show='{}' via TVMaze (tvmazeId={})", show.imdbId, show.title, show.tvmazeId);
+      }
+      if (show.imdbId == null) {
+        log.warn("enrichRatings: no imdbId for show='{}' (tmdbId={}, tvmazeId={}) — skipping ratings",
+            show.title, show.tmdbId, show.tvmazeId);
+        return;
+      }
+      omdb.enrichShow(show);
+      for (var season : show.seasons) {
+        omdb.enrichSeason(show, season);
+      }
+    } catch (Exception e) {
+      log.warn("enrichRatings failed for show={}: {}", show.title, e.getMessage());
+    }
   }
 
   public List<Long> fetchRecentlyUpdatedTmdbIds() {

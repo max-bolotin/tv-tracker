@@ -17,6 +17,9 @@ public class TrackedShow {
     public ProductionStatus productionStatus = ProductionStatus.ONGOING;
     public WatchStatus watchStatus = WatchStatus.NOT_WATCHED;
     public List<Season> seasons = new ArrayList<>();
+    public String imdbRating;        // e.g. "8.2" or null
+    public String rtRating;          // e.g. "94%" or null
+    public String ratingsUpdatedAt;  // ISO-8601 date string, null if never fetched
 
     public TrackedShow() {}
 

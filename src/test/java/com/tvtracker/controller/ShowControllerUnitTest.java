@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -144,13 +145,13 @@ class ShowControllerTest {
   void addShow_fetchesDetailsAssignsIdAndPersistsAsNotWatched() throws Exception {
     TrackedShow fetched = show(null, null);
     when(metadata.fetchDetails(42L, null)).thenReturn(fetched);
-    when(storage.save(eq(USER_ID), any(TrackedShow.class))).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(true))).thenAnswer(inv -> inv.getArgument(1));
 
     TrackedShow result = controller.addShow(new ShowController.AddShowRequest(42L, null));
 
     assertThat(result.id).isNotNull();
     assertThat(result.watchStatus).isEqualTo(WatchStatus.NOT_WATCHED);
-    verify(storage).save(eq(USER_ID), eq(fetched));
+    verify(storage).save(eq(USER_ID), eq(fetched), eq(true));
   }
 
   // ---- delete ----
@@ -180,12 +181,12 @@ class ShowControllerTest {
     TrackedShow show = show("1", WatchStatus.NOT_WATCHED);
     show.seasons.add(season(1, ep1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleEpisode("1", 1, 1, new ShowController.EpisodeToggle(true));
 
     assertThat(ep1.watched).isTrue();
-    verify(storage).save(eq(USER_ID), eq(show));
+    verify(storage).save(eq(USER_ID), eq(show), anyBoolean());
   }
 
   @Test
@@ -193,7 +194,7 @@ class ShowControllerTest {
     TrackedShow show = show("1", WatchStatus.NOT_WATCHED);
     show.seasons.add(season(1, episode(1, false)));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleEpisode("1", 99, 1, new ShowController.EpisodeToggle(true));
 
@@ -211,7 +212,7 @@ class ShowControllerTest {
     show.seasons.add(season(1, s1e1, s1e2));
     show.seasons.add(season(2, s2e1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleSeason("1", 1, new ShowController.EpisodeToggle(true));
 
@@ -230,7 +231,7 @@ class ShowControllerTest {
     show.seasons.add(season(1, s1e1));
     show.seasons.add(season(2, s2e1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleAllWatched("1", new ShowController.EpisodeToggle(true));
 
@@ -265,7 +266,7 @@ class ShowControllerTest {
 
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(existing));
     when(metadata.fetchDetails(42L, null)).thenReturn(fresh);
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     TrackedShow result = controller.refreshShow("1");
 

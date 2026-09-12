@@ -49,6 +49,12 @@ export function ShowCard({ show, onClick, onDelete, onRefresh }: Props) {
         <span className={`badge status-${show.watchStatus.toLowerCase()}`}>
           {STATUS_LABELS[show.watchStatus]}
         </span>
+        {(show.imdbRating || show.rtRating) && (
+          <div className="card-ratings">
+            {show.imdbRating && <span className="rating-imdb">⭐ {show.imdbRating}</span>}
+            {show.rtRating && <span className="rating-rt">🍅 {show.rtRating}</span>}
+          </div>
+        )}
       </div>
       <button
         className={`refresh-card-btn${refreshing ? ' spinning' : ''}`}
