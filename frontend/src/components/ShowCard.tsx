@@ -49,9 +49,10 @@ export function ShowCard({ show, onClick, onDelete, onRefresh }: Props) {
         <span className={`badge status-${show.watchStatus.toLowerCase()}`}>
           {STATUS_LABELS[show.watchStatus]}
         </span>
-        {(show.imdbRating || show.rtRating) && (
+        {(show.personalRating != null || show.imdbRating || show.rtRating) && (
           <div className="card-ratings">
-            {show.imdbRating && <span className="rating-imdb">⭐ {show.imdbRating}</span>}
+            {show.personalRating != null && <span className="rating-personal">★ {show.personalRating.toFixed(1).replace(/\.0$/, '')}/10</span>}
+            {show.imdbRating && <span className="rating-imdb">IMDb {show.imdbRating}</span>}
             {show.rtRating && <span className="rating-rt">🍅 {show.rtRating}</span>}
           </div>
         )}

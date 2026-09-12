@@ -173,6 +173,36 @@ class ShowControllerTest {
         .isInstanceOf(ShowNotFoundException.class);
   }
 
+  // ---- personal rating ----
+
+  @Test
+  void updatePersonalRating_savesProvidedValueAndKeepsPosition() throws Exception {
+    TrackedShow show = show("1", WatchStatus.WATCHING_NOW);
+    show.personalRating = 7.5;
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(false))).thenAnswer(inv -> inv.getArgument(1));
+
+    TrackedShow result = controller.updatePersonalRating("1", new ShowController.PersonalRatingUpdate(8.5));
+
+    assertThat(result.personalRating).isEqualTo(8.5);
+    assertThat(show.personalRating).isEqualTo(8.5);
+    verify(storage).save(eq(USER_ID), eq(show), eq(false));
+  }
+
+  @Test
+  void updatePersonalRating_acceptsNullToClearRatingWithoutMovingPosition() throws Exception {
+    TrackedShow show = show("1", WatchStatus.UP_TO_DATE);
+    show.personalRating = 6.5;
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(false))).thenAnswer(inv -> inv.getArgument(1));
+
+    TrackedShow result = controller.updatePersonalRating("1", new ShowController.PersonalRatingUpdate(null));
+
+    assertThat(result.personalRating).isNull();
+    assertThat(show.personalRating).isNull();
+    verify(storage).save(eq(USER_ID), eq(show), eq(false));
+  }
+
   // ---- toggleEpisode ----
 
   @Test
@@ -259,6 +289,7 @@ class ShowControllerTest {
     TrackedShow existing = show("1", WatchStatus.WATCHING_NOW);
     existing.seasons.add(season(1, existingEp));
     existing.tmdbId = 42L;
+    existing.personalRating = 9.0;
 
     Episode freshEp = episode(1, false);
     TrackedShow fresh = show(null, null);
@@ -272,6 +303,7 @@ class ShowControllerTest {
 
     assertThat(result.id).isEqualTo("1");
     assertThat(result.watchStatus).isEqualTo(WatchStatus.WATCHING_NOW);
+    assertThat(result.personalRating).isEqualTo(9.0);
     assertThat(freshEp.watched).isTrue(); // carried over from the existing episode
   }
 

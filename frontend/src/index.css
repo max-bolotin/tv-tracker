@@ -252,6 +252,24 @@ body {
 .untrack-btn:hover { background: #6a3f3f; }
 .untrack-btn:active { transform: translateY(1px); }
 
+.modal-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.my-rating-btn {
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #5a5af0;
+  background: rgba(90, 90, 240, 0.12);
+  color: #dfe6ff;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.my-rating-btn:hover { background: rgba(90, 90, 240, 0.2); }
+
 .refresh-card-btn {
   position: absolute;
   top: 6px; left: 6px;
@@ -378,6 +396,116 @@ body {
 .rating-rt   { font-size: 0.8rem; color: #fa320a; }
 .modal-ratings .rating-imdb { font-size: 0.85rem; color: #f5c518; }
 .modal-ratings .rating-rt   { font-size: 0.85rem; color: #fa320a; }
+
+.rating-icon-svg {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.rating-personal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: #7ab8ff;
+}
+
+.rating-personal .rating-icon-svg {
+  color: #7ab8ff;
+}
+
+.rating-imdb-text {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.rating-imdb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #f5c518;
+  text-decoration: none;
+}
+
+.rating-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  padding: 1rem;
+}
+
+.rating-modal {
+  position: relative;
+  width: min(100%, 360px);
+  background: #1a1a24;
+  border: 1px solid #3a3a5a;
+  border-radius: 12px;
+  padding: 1.25rem 1rem 1rem;
+}
+
+.rating-modal h3 {
+  font-size: 1.05rem;
+  margin-bottom: 1rem;
+  color: #f0f0ff;
+}
+
+.rating-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.rating-editor input[type='range'] {
+  width: 100%;
+  accent-color: #5a5af0;
+}
+
+.rating-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #9aa0d6;
+}
+
+.rating-value-display {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rating-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.secondary-action, .primary-action {
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.secondary-action {
+  background: #2a2a3a;
+  color: #dfe6ff;
+}
+
+.primary-action {
+  background: #5a5af0;
+  color: white;
+}
 
 /* Seasons */
 .seasons-list { display: flex; flex-direction: column; gap: 0.5rem; }

@@ -29,6 +29,7 @@ export interface TrackedShow {
   seasons: Season[];
   imdbRating?: string;
   rtRating?: string;
+  personalRating?: number | null;
 }
 
 export interface ShowSearchResult {

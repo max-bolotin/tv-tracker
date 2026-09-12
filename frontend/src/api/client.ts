@@ -68,6 +68,13 @@ export const api = {
       body: JSON.stringify({ watched }),
     }),
 
+  updatePersonalRating: (id: string, personalRating: number | null) =>
+    req<TrackedShow>(`/shows/${id}/rating`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personalRating }),
+    }),
+
   exportData: () => fetch(BASE + '/data/export').then(r => r.blob()),
 
   importData: (file: File) => {
