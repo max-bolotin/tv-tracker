@@ -63,7 +63,7 @@ public class MetadataService {
       }
       if (match != null && match.tmdbId != null) {
         show.tmdbId = match.tmdbId;
-        log.info("hydrateMissingTmdbId: resolved tmdbId={} for show='{}' from title search", show.tmdbId, show.title);
+        log.debug("hydrateMissingTmdbId: resolved tmdbId={} for show='{}' from title search", show.tmdbId, show.title);
       }
     } catch (Exception e) {
       log.warn("hydrateMissingTmdbId failed for show='{}': {}", show.title, e.getMessage());
@@ -71,7 +71,7 @@ public class MetadataService {
   }
 
   public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId) {
-    log.info("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
+    log.debug("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
         tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
 
     java.util.concurrent.CompletableFuture<TrackedShow> fTmdb;
@@ -87,7 +87,7 @@ public class MetadataService {
         }
       });
     } else {
-      log.info("fetchDetails: skipping TMDB call for tmdbId={} because it is null or not configured", tmdbId);
+      log.debug("fetchDetails: skipping TMDB call for tmdbId={} because it is null or not configured", tmdbId);
       fTmdb = java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
@@ -130,7 +130,7 @@ public class MetadataService {
       merged.productionStatus = fromTmdb.productionStatus != null ? fromTmdb.productionStatus
           : fromTvmaze.productionStatus;
       merged.cast = fromTmdb.cast != null && !fromTmdb.cast.isEmpty() ? fromTmdb.cast : fromTvmaze.cast;
-      log.info("fetchDetails: merged show='{}' castSize={} fromTmdb={} fromTvmaze={}",
+      log.debug("fetchDetails: merged show='{}' castSize={} fromTmdb={} fromTvmaze={}",
           merged.title,
           merged.cast == null ? 0 : merged.cast.size(),
           fromTmdb.cast != null ? fromTmdb.cast.size() : 0,
@@ -238,11 +238,11 @@ public class MetadataService {
     try {
       if (show.imdbId == null && show.tmdbId != null && tmdb.isConfigured()) {
         show.imdbId = tmdb.fetchImdbId(show.tmdbId);
-        log.info("enrichRatings: resolved imdbId={} for show='{}' via TMDB (tmdbId={})", show.imdbId, show.title, show.tmdbId);
+        log.debug("enrichRatings: resolved imdbId={} for show='{}' via TMDB (tmdbId={})", show.imdbId, show.title, show.tmdbId);
       }
       if (show.imdbId == null && show.tvmazeId != null) {
         show.imdbId = tvmaze.fetchImdbId(show.tvmazeId);
-        log.info("enrichRatings: resolved imdbId={} for show='{}' via TVMaze (tvmazeId={})", show.imdbId, show.title, show.tvmazeId);
+        log.debug("enrichRatings: resolved imdbId={} for show='{}' via TVMaze (tvmazeId={})", show.imdbId, show.title, show.tvmazeId);
       }
       if (show.imdbId == null) {
         log.warn("enrichRatings: no imdbId for show='{}' (tmdbId={}, tvmazeId={}) — skipping ratings",
