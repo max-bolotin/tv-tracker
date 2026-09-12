@@ -72,6 +72,9 @@ public class DailyUpdateScheduler {
             show.title, show.tmdbId, show.tvmazeId, matchTmdb, matchTvmaze, hasEmptySeason);
 
         try {
+          if (show.tmdbId == null) {
+            metadata.hydrateMissingTmdbId(show);
+          }
           TrackedShow fresh = metadata.fetchDetails(show.tmdbId, show.tvmazeId);
           boolean hasNewEpisodes = mergeNewEpisodes(show, fresh);
           boolean statusChanged = false;

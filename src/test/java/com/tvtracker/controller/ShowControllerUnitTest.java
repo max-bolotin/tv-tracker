@@ -290,6 +290,7 @@ class ShowControllerTest {
     existing.seasons.add(season(1, existingEp));
     existing.tmdbId = 42L;
     existing.personalRating = 9.0;
+    existing.cast = List.of(new com.tvtracker.model.Actor("Actor One", "/p1.jpg"));
 
     Episode freshEp = episode(1, false);
     TrackedShow fresh = show(null, null);
@@ -304,6 +305,7 @@ class ShowControllerTest {
     assertThat(result.id).isEqualTo("1");
     assertThat(result.watchStatus).isEqualTo(WatchStatus.WATCHING_NOW);
     assertThat(result.personalRating).isEqualTo(9.0);
+    assertThat(result.cast).hasSize(1);
     assertThat(freshEp.watched).isTrue(); // carried over from the existing episode
   }
 

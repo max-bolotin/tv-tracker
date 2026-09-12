@@ -63,7 +63,7 @@ public class OmdbProvider {
             show.imdbRating = parseImdb(root);
             show.rtRating = parseRt(root);
             show.ratingsUpdatedAt = LocalDate.now().toString();
-            log.info("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
+            log.debug("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
         } catch (Exception e) {
             log.warn("OMDb enrichShow failed for '{}': {}", show.title, e.getMessage());
         }
@@ -80,13 +80,13 @@ public class OmdbProvider {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId
                     + "&type=series&Season=" + season.number);
             if (!"True".equals(root.path("Response").asText())) {
-                log.info("OMDb no result for show imdbId={} season={}", show.imdbId, season.number);
+                log.debug("OMDb no result for show imdbId={} season={}", show.imdbId, season.number);
                 return;
             }
             season.imdbRating = parseImdb(root);
             season.rtRating = parseRt(root);
             season.ratingsUpdatedAt = LocalDate.now().toString();
-            log.info("OMDb enriched show '{}' season {}: imdb={} rt={}", show.title, season.number,
+            log.debug("OMDb enriched show '{}' season {}: imdb={} rt={}", show.title, season.number,
                     season.imdbRating, season.rtRating);
         } catch (Exception e) {
             log.warn("OMDb enrichSeason failed for '{}' s{}: {}", show.title, season.number, e.getMessage());
