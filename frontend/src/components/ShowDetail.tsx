@@ -167,7 +167,9 @@ export function ShowDetail(props: Props) {
       <div className="modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>✕</button>
         <div className="modal-header">
-          {show.posterPath && <img src={show.posterPath} alt={show.title} className="modal-poster" />}
+          <div className="modal-poster-wrap">
+            {show.posterPath && <img src={show.posterPath} alt={show.title} className="modal-poster" />}
+          </div>
           <div className="modal-meta">
             <h2>{show.title}</h2>
             {/* Track / Untrack button: if an onUntrack handler provided, show Untrack (for My Shows context). Otherwise, show Already tracked (disabled) for previews */}

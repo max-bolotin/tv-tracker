@@ -74,14 +74,16 @@ public class DailyUpdateScheduler {
         try {
           TrackedShow fresh = metadata.fetchDetails(show.tmdbId, show.tvmazeId);
           boolean hasNewEpisodes = mergeNewEpisodes(show, fresh);
+          boolean statusChanged = false;
           if (hasNewEpisodes) {
             show.watchStatus = WatchStatus.WATCHING_NOW;
+            statusChanged = true;
             log.debug("Show '{}' moved to WATCHING_NOW (new episodes added)", show.title);
           } else {
             log.debug("Show '{}' was updated but has no new episodes — keeping UP_TO_DATE",
                 show.title);
           }
-          storage.save(userId, show);
+          storage.save(userId, show, statusChanged);
         } catch (Exception e) {
           log.warn("Failed to refresh show '{}': {}", show.title, e.getMessage());
         }
@@ -96,7 +98,7 @@ public class DailyUpdateScheduler {
         WatchStatus before = show.watchStatus;
         show.recalculateStatus();
         if (show.watchStatus != before) {
-          storage.save(userId, show);
+          storage.save(userId, show, true);
           log.debug("Show '{}' healed: {} → {}", show.title, before, show.watchStatus);
         }
       }

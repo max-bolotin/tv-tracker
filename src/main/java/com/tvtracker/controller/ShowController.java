@@ -75,7 +75,7 @@ public class ShowController {
     TrackedShow show = metadata.fetchDetails(req.tmdbId(), req.tvmazeId());
     show.id = UUID.randomUUID().toString();
     show.watchStatus = WatchStatus.NOT_WATCHED;
-    return storage.save(userId, show);
+    return storage.save(userId, show, true);
   }
 
   @DeleteMapping("/{id}")
@@ -97,8 +97,9 @@ public class ShowController {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow show = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+    WatchStatus before = show.watchStatus;
     show.watchStatus = body.status();
-    return storage.save(userId, show);
+    return storage.save(userId, show, before != body.status());
   }
 
   /**
@@ -115,12 +116,13 @@ public class ShowController {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow show = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+    WatchStatus beforeEp = show.watchStatus;
     show.seasons.stream()
         .filter(s -> s.number == season).findFirst()
         .flatMap(s -> s.episodes.stream().filter(e -> e.number == episode).findFirst())
         .ifPresent(ep -> ep.watched = body.watched());
     show.recalculateStatus();
-    return storage.save(userId, show);
+    return storage.save(userId, show, show.watchStatus != beforeEp);
   }
 
   /**
@@ -136,10 +138,11 @@ public class ShowController {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow show = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+    WatchStatus beforeSeason = show.watchStatus;
     show.seasons.stream().filter(s -> s.number == season).findFirst()
         .ifPresent(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
     show.recalculateStatus();
-    return storage.save(userId, show);
+    return storage.save(userId, show, show.watchStatus != beforeSeason);
   }
 
   /**
@@ -154,9 +157,10 @@ public class ShowController {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow show = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+    WatchStatus beforeAll = show.watchStatus;
     show.seasons.forEach(s -> s.episodes.forEach(ep -> ep.watched = body.watched()));
     show.recalculateStatus();
-    return storage.save(userId, show);
+    return storage.save(userId, show, show.watchStatus != beforeAll);
   }
 
   /**
@@ -213,7 +217,8 @@ public class ShowController {
       log.warn("refreshShow: failed to evaluate watch status change for {}: {}", existing.title,
           e.getMessage());
     }
-    TrackedShow saved = storage.save(userId, fresh);
+    boolean statusChanged = fresh.watchStatus != existing.watchStatus;
+    TrackedShow saved = storage.save(userId, fresh, statusChanged);
     log.debug("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
     return saved;
   }

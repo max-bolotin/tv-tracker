@@ -149,25 +149,47 @@ body {
 }
 .search-results li button:hover { background: #5a5af020; }
 
-/* Tabs */
-.tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+/* Tabs — horizontal scrollable material-style underline bar */
+.tabs {
+  display: flex;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #2a2a3a;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+  gap: 0;
+}
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
-  padding: 0.4rem 1rem;
-  border-radius: 20px;
-  border: 1px solid #3a3a5a;
+  flex-shrink: 0;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px; /* overlap container border */
   background: transparent;
-  color: #888;
+  color: #666;
   cursor: pointer;
   font-size: 0.85rem;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  /* vertical divider between tabs */
+  border-right: 1px solid #2a2a3a;
 }
-.tab:hover { border-color: #5a5af0; color: #c0c0e0; }
-.tab.active { background: #5a5af0; border-color: #5a5af0; color: white; }
+.tab:last-child { border-right: none; }
+.tab:hover { color: #c0c0e0; }
+.tab.active {
+  color: #9090f0;
+  border-bottom-color: #5a5af0;
+  background: #5a5af010;
+}
 
 /* Show Grid */
 .show-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
+  /* prevent any column from growing wider than its siblings */
+  align-items: start;
 }
 @media (min-width: 540px)  { .show-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (min-width: 768px)  { .show-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
@@ -297,7 +319,47 @@ body {
 }
 .modal-close:hover { color: white; }
 .modal-header { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; }
-.modal-poster { width: 120px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.modal-poster-wrap { flex-shrink: 0; }
+.modal-poster { width: 120px; border-radius: 8px; object-fit: cover; }
+@media (max-width: 540px) {
+  .modal-header {
+    flex-direction: column;
+    gap: 0;
+  }
+  .modal-poster {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    border-radius: 8px 8px 0 0;
+    margin-bottom: 1rem;
+  }
+  /* vignette overlay on the cropped poster */
+  .modal-poster-wrap {
+    position: relative;
+    width: 100%;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .modal-poster-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.35) 0%,
+      transparent 30%,
+      transparent 70%,
+      rgba(0,0,0,0.45) 100%
+    );
+    pointer-events: none;
+  }
+  .modal-poster-wrap .modal-poster {
+    width: 100%;
+    margin-bottom: 0;
+    border-radius: 0;
+  }
+}
 .modal-meta h2 { font-size: 1.4rem; margin-bottom: 0.5rem; }
 .overview { font-size: 0.9rem; color: #aaa; line-height: 1.5; margin-bottom: 0.75rem; }
 .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; }
@@ -371,7 +433,7 @@ body {
   cursor: default;
 }
 .episode-unaired .ep-airdate {
-  color: #7a6a3a;
+  color: inherit; /* same as episode name in unaired row */
 }
 
 .season-progress {

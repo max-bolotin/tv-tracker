@@ -101,14 +101,33 @@ public class JsonStorageService {
     }
 
     public synchronized TrackedShow save(TrackedShow show) throws IOException {
-        return save("default", show);
+        return save("default", show, false);
     }
 
     public synchronized TrackedShow save(String userId, TrackedShow show) throws IOException {
+        return save(userId, show, false);
+    }
+
+    /**
+     * Persists a show. If {@code prepend} is true the show is moved to index 0 (used when
+     * a show is newly added or changes watch-status tier). Otherwise, its existing position
+     * is preserved; only a brand-new show (no prior entry) is appended at index 0.
+     */
+    public synchronized TrackedShow save(String userId, TrackedShow show, boolean prepend) throws IOException {
         List<TrackedShow> shows = loadAll(userId);
         if (show.id == null) show.id = UUID.randomUUID().toString();
-        shows.removeIf(s -> s.id.equals(show.id));
-        shows.add(show);
+        int existingIndex = -1;
+        for (int i = 0; i < shows.size(); i++) {
+            if (shows.get(i).id.equals(show.id)) { existingIndex = i; break; }
+        }
+        if (existingIndex >= 0 && !prepend) {
+            // preserve position
+            shows.set(existingIndex, show);
+        } else {
+            // new show or status change: remove old entry (if any) and prepend
+            if (existingIndex >= 0) shows.remove(existingIndex);
+            shows.addFirst(show);
+        }
         saveAll(userId, shows);
         return show;
     }
