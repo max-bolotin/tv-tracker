@@ -15,6 +15,12 @@ export interface Season {
   rtRating?: string;
 }
 
+export interface Actor {
+  name: string;
+  profilePath?: string;
+  linkUrl?: string;
+}
+
 export interface TrackedShow {
   id: string;
   tmdbId?: number;
@@ -27,6 +33,7 @@ export interface TrackedShow {
   productionStatus: ProductionStatus;
   watchStatus: WatchStatus;
   seasons: Season[];
+  cast?: Actor[];
   imdbRating?: string;
   rtRating?: string;
   personalRating?: number | null;

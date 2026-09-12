@@ -188,10 +188,26 @@ public class ShowController {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow existing = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+    if (existing.tmdbId == null) {
+      metadata.hydrateMissingTmdbId(existing);
+    }
     TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
     fresh.id = existing.id;
     fresh.watchStatus = existing.watchStatus;
     fresh.personalRating = existing.personalRating;
+    if (fresh.cast == null) {
+      fresh.cast = existing.cast != null ? existing.cast : new java.util.ArrayList<>();
+    } else if (fresh.cast.isEmpty() && existing.cast != null && !existing.cast.isEmpty()) {
+      long existingCastSize = existing.cast.size();
+      long freshCastSize = fresh.cast.size();
+      log.info("refreshShow: keeping existing cast for '{}' because refreshed cast is empty (existing={} fresh={})",
+          existing.title, existingCastSize, freshCastSize);
+      fresh.cast = existing.cast;
+    }
+    long existingCastCount = existing.cast == null ? 0L : (long) existing.cast.size();
+    long freshCastCount = fresh.cast == null ? 0L : (long) fresh.cast.size();
+    log.info("refreshShow: cast summary for '{}' - existing={} fresh={}", existing.title,
+        existingCastCount, freshCastCount);
     // carry over watched flags for matching episodes
     for (var existingSeason : existing.seasons) {
       fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()

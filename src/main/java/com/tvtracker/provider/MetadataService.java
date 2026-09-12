@@ -36,7 +36,44 @@ public class MetadataService {
     return tvmaze.search(query);
   }
 
+  public void hydrateMissingTmdbId(TrackedShow show) {
+    if (show == null || show.tmdbId != null || show.title == null || show.title.isBlank()) {
+      return;
+    }
+    try {
+      List<ShowSearchResult> hits = search(show.title);
+      ShowSearchResult match = null;
+      if (show.tvmazeId != null) {
+        match = hits.stream()
+            .filter(h -> h.tvmazeId != null && h.tvmazeId.equals(show.tvmazeId))
+            .findFirst()
+            .orElse(null);
+      }
+      if (match == null && show.imdbId != null) {
+        match = hits.stream()
+            .filter(h -> h.imdbId != null && h.imdbId.equals(show.imdbId))
+            .findFirst()
+            .orElse(null);
+      }
+      if (match == null) {
+        match = hits.stream()
+            .filter(h -> h.title != null && h.title.equalsIgnoreCase(show.title))
+            .findFirst()
+            .orElse(null);
+      }
+      if (match != null && match.tmdbId != null) {
+        show.tmdbId = match.tmdbId;
+        log.info("hydrateMissingTmdbId: resolved tmdbId={} for show='{}' from title search", show.tmdbId, show.title);
+      }
+    } catch (Exception e) {
+      log.warn("hydrateMissingTmdbId failed for show='{}': {}", show.title, e.getMessage());
+    }
+  }
+
   public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId) {
+    log.info("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
+        tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
+
     java.util.concurrent.CompletableFuture<TrackedShow> fTmdb;
     java.util.concurrent.CompletableFuture<TrackedShow> fTvmaze;
 
@@ -50,6 +87,7 @@ public class MetadataService {
         }
       });
     } else {
+      log.info("fetchDetails: skipping TMDB call for tmdbId={} because it is null or not configured", tmdbId);
       fTmdb = java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
@@ -91,6 +129,12 @@ public class MetadataService {
       merged.posterPath = fromTmdb.posterPath != null ? fromTmdb.posterPath : fromTvmaze.posterPath;
       merged.productionStatus = fromTmdb.productionStatus != null ? fromTmdb.productionStatus
           : fromTvmaze.productionStatus;
+      merged.cast = fromTmdb.cast != null && !fromTmdb.cast.isEmpty() ? fromTmdb.cast : fromTvmaze.cast;
+      log.info("fetchDetails: merged show='{}' castSize={} fromTmdb={} fromTvmaze={}",
+          merged.title,
+          merged.cast == null ? 0 : merged.cast.size(),
+          fromTmdb.cast != null ? fromTmdb.cast.size() : 0,
+          fromTvmaze.cast != null ? fromTvmaze.cast.size() : 0);
 
       // Build union of season numbers from both providers
       java.util.Set<Integer> seasonNums = new java.util.TreeSet<>();

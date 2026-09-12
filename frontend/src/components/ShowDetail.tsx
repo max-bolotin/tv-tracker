@@ -285,6 +285,29 @@ export function ShowDetail(props: Props) {
               )}
             </div>
             <p className="overview">{show.overview}</p>
+            {show.cast && show.cast.length > 0 && (
+              <div className="cast-section" aria-label="Cast members">
+                <div className="cast-row">
+                  {show.cast.slice(0, 5).map(actor => (
+                    <a
+                      key={`${show.id}-${actor.name}`}
+                      className="cast-card"
+                      href={actor.linkUrl || undefined}
+                      target={actor.linkUrl ? '_blank' : undefined}
+                      rel={actor.linkUrl ? 'noreferrer noopener' : undefined}
+                      aria-label={actor.linkUrl ? `Open ${actor.name} profile` : `Actor ${actor.name}`}
+                    >
+                      {actor.profilePath ? (
+                        <img src={actor.profilePath} alt={actor.name} className="cast-photo" />
+                      ) : (
+                        <div className="cast-photo cast-placeholder">{actor.name.charAt(0).toUpperCase()}</div>
+                      )}
+                      <span className="cast-name">{actor.name}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="badges">
               <span className={`badge production-${show.productionStatus.toLowerCase()}`}>
                 {show.productionStatus === 'ONGOING' ? 'Ongoing' : 'Ended'}

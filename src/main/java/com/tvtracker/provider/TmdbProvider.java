@@ -35,6 +35,12 @@ public class TmdbProvider implements MetadataProvider {
         this.mapper = mapper;
     }
 
+    @jakarta.annotation.PostConstruct
+    void logConfigStatus() {
+        org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
+            .info("TMDB provider configured={}", isConfigured());
+    }
+
     public boolean isConfigured() {
         return apiKey != null && !apiKey.isBlank();
     }
@@ -101,6 +107,9 @@ public class TmdbProvider implements MetadataProvider {
                 }
             }
             show.totalSeasons = show.seasons.size();
+            List<Actor> fetchedCast = fetchCast(tmdbId);
+            show.cast = fetchedCast;
+            logDebugCast(tmdbId, fetchedCast);
             return show;
         } catch (Exception e) {
             throw new RuntimeException("TMDB fetchDetails failed for id=" + tmdbId, e);
@@ -119,6 +128,42 @@ public class TmdbProvider implements MetadataProvider {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    static String buildActorLink(long personId) {
+        return personId > 0 ? "https://www.themoviedb.org/person/" + personId : null;
+    }
+
+    public List<Actor> fetchCast(long tmdbId) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/tv/" + tmdbId + "/credits")
+                    .queryParam("api_key", apiKey)
+                    .toUriString();
+            JsonNode root = get(url);
+            List<Actor> cast = new ArrayList<>();
+            for (JsonNode item : root.path("cast")) {
+                if (cast.size() >= 5) break;
+                String name = item.path("name").asText(null);
+                if (name == null || name.isBlank()) continue;
+                long personId = item.path("id").asLong(0);
+                String profilePath = item.path("profile_path").asText(null);
+                cast.add(new Actor(name, profilePath != null ? imageBaseUrl + profilePath : null,
+                    buildActorLink(personId)));
+            }
+            return cast;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private void logDebugCast(long tmdbId, List<Actor> cast) {
+        if (cast == null || cast.isEmpty()) {
+            org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
+                .info("TMDB credits fetch for show tmdbId={} returned no cast entries", tmdbId);
+            return;
+        }
+        org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
+            .info("TMDB credits fetch for show tmdbId={} returned {} cast entries", tmdbId, cast.size());
     }
 
     // Made public so callers can attempt to re-fetch individual seasons when needed

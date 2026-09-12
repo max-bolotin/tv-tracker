@@ -17,6 +17,7 @@ public class TrackedShow {
     public ProductionStatus productionStatus = ProductionStatus.ONGOING;
     public WatchStatus watchStatus = WatchStatus.NOT_WATCHED;
     public List<Season> seasons = new ArrayList<>();
+    public List<Actor> cast = new ArrayList<>();
     public String imdbRating;        // e.g. "8.2" or null
     public String rtRating;          // e.g. "94%" or null
     public Double personalRating;     // 0.0-10.0 in 0.5 increments, null if unset
@@ -101,4 +102,6 @@ public class TrackedShow {
     public void setWatchStatus(WatchStatus watchStatus) { this.watchStatus = watchStatus; }
     public List<Season> getSeasons() { return seasons; }
     public void setSeasons(List<Season> seasons) { this.seasons = seasons; }
+    public List<Actor> getCast() { return cast; }
+    public void setCast(List<Actor> cast) { this.cast = cast; }
 }
