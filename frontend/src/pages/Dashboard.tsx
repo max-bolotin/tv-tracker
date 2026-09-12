@@ -307,7 +307,20 @@ export function Dashboard() {
 
   const handleUpdate = (updated: TrackedShow) => {
     localWrites.current++;
-    setAllShows(prev => prev.map(s => s.id === updated.id ? updated : s));
+    setAllShows(prev => {
+      const idx = prev.findIndex(s => s.id === updated.id);
+      if (idx === -1) return prev;
+      const old = prev[idx];
+      // status changed — move to front so it appears first in its new tab
+      if (old.watchStatus !== updated.watchStatus) {
+        const next = prev.filter(s => s.id !== updated.id);
+        return [updated, ...next];
+      }
+      // same status — preserve position
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
     setSelected(updated);
   };
 
@@ -419,6 +432,34 @@ export function Dashboard() {
     setAllShows([]);
   };
 
+  const TAB_VALUES = TABS.map(t => t.value);
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  // Scroll active tab into view whenever tab changes (needed after swipe)
+  useEffect(() => {
+    tabRefs.current.get(tab as string)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [tab]);
+
+  // Swipe left/right on the grid area switches tabs (mobile only)
+  const swipeTouchStart = useRef<number | null>(null);
+  const swipeTouchStartY = useRef<number | null>(null);
+  const handleGridTouchStart = (e: React.TouchEvent) => {
+    swipeTouchStart.current = e.touches[0].clientX;
+    swipeTouchStartY.current = e.touches[0].clientY;
+  };
+  const handleGridTouchEnd = (e: React.TouchEvent) => {
+    if (swipeTouchStart.current === null) return;
+    const dx = e.changedTouches[0].clientX - swipeTouchStart.current;
+    const dy = e.changedTouches[0].clientY - (swipeTouchStartY.current ?? 0);
+    swipeTouchStart.current = null;
+    swipeTouchStartY.current = null;
+    // require horizontal movement > 60px AND at least 2x the vertical movement
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+    const idx = TAB_VALUES.indexOf(tab);
+    if (dx < 0 && idx < TAB_VALUES.length - 1) setTab(TAB_VALUES[idx + 1]);
+    if (dx > 0 && idx > 0) setTab(TAB_VALUES[idx - 1]);
+  };
+
   const gridProps = {
     shows: allShows,
     tab,
@@ -430,7 +471,7 @@ export function Dashboard() {
 
   if ((tab as any) === 'POPULAR') {
     return (
-        <div className="dashboard">
+        <div className="dashboard" onTouchStart={handleGridTouchStart} onTouchEnd={handleGridTouchEnd}>
           <header className="app-header">
             <h1>📺 TV Tracker</h1>
             <nav className="header-nav">
@@ -491,6 +532,7 @@ export function Dashboard() {
             {TABS.map(t => (
                 <button
                     key={t.value}
+                    ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                     className={tab === t.value ? 'tab active' : 'tab'}
                     onClick={() => setTab(t.value)}
                 >
@@ -574,7 +616,7 @@ export function Dashboard() {
 
   if (authLoading) {
     return (
-        <div className="dashboard">
+        <div className="dashboard" onTouchStart={handleGridTouchStart} onTouchEnd={handleGridTouchEnd}>
           <header className="app-header">
             <h1>📺 TV Tracker</h1>
           </header>
@@ -587,7 +629,7 @@ export function Dashboard() {
 
   if (!currentUser) {
     return (
-        <div className="dashboard">
+        <div className="dashboard" onTouchStart={handleGridTouchStart} onTouchEnd={handleGridTouchEnd}>
           <header className="app-header">
             <h1>📺 TV Tracker</h1>
             <nav className="header-nav">
@@ -609,6 +651,7 @@ export function Dashboard() {
             {TABS.map(t => (
                 <button
                     key={t.value}
+                    ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                     className={tab === t.value ? 'tab active' : 'tab'}
                     onClick={() => setTab(t.value)}
                 >
@@ -679,7 +722,7 @@ export function Dashboard() {
   }
 
   return (
-      <div className="dashboard">
+      <div className="dashboard" onTouchStart={handleGridTouchStart} onTouchEnd={handleGridTouchEnd}>
         <header className="app-header">
           <h1>📺 TV Tracker</h1>
           <nav className="header-nav">
@@ -718,6 +761,7 @@ export function Dashboard() {
           {TABS.map(t => (
               <button
                   key={t.value}
+                  ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                   className={tab === t.value ? 'tab active' : 'tab'}
                   onClick={() => setTab(t.value)}
               >
