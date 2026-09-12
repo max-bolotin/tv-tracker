@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -144,13 +145,13 @@ class ShowControllerTest {
   void addShow_fetchesDetailsAssignsIdAndPersistsAsNotWatched() throws Exception {
     TrackedShow fetched = show(null, null);
     when(metadata.fetchDetails(42L, null)).thenReturn(fetched);
-    when(storage.save(eq(USER_ID), any(TrackedShow.class))).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(true))).thenAnswer(inv -> inv.getArgument(1));
 
     TrackedShow result = controller.addShow(new ShowController.AddShowRequest(42L, null));
 
     assertThat(result.id).isNotNull();
     assertThat(result.watchStatus).isEqualTo(WatchStatus.NOT_WATCHED);
-    verify(storage).save(eq(USER_ID), eq(fetched));
+    verify(storage).save(eq(USER_ID), eq(fetched), eq(true));
   }
 
   // ---- delete ----
@@ -172,6 +173,36 @@ class ShowControllerTest {
         .isInstanceOf(ShowNotFoundException.class);
   }
 
+  // ---- personal rating ----
+
+  @Test
+  void updatePersonalRating_savesProvidedValueAndKeepsPosition() throws Exception {
+    TrackedShow show = show("1", WatchStatus.WATCHING_NOW);
+    show.personalRating = 7.5;
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(false))).thenAnswer(inv -> inv.getArgument(1));
+
+    TrackedShow result = controller.updatePersonalRating("1", new ShowController.PersonalRatingUpdate(8.5));
+
+    assertThat(result.personalRating).isEqualTo(8.5);
+    assertThat(show.personalRating).isEqualTo(8.5);
+    verify(storage).save(eq(USER_ID), eq(show), eq(false));
+  }
+
+  @Test
+  void updatePersonalRating_acceptsNullToClearRatingWithoutMovingPosition() throws Exception {
+    TrackedShow show = show("1", WatchStatus.UP_TO_DATE);
+    show.personalRating = 6.5;
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
+    when(storage.save(eq(USER_ID), any(TrackedShow.class), eq(false))).thenAnswer(inv -> inv.getArgument(1));
+
+    TrackedShow result = controller.updatePersonalRating("1", new ShowController.PersonalRatingUpdate(null));
+
+    assertThat(result.personalRating).isNull();
+    assertThat(show.personalRating).isNull();
+    verify(storage).save(eq(USER_ID), eq(show), eq(false));
+  }
+
   // ---- toggleEpisode ----
 
   @Test
@@ -180,12 +211,12 @@ class ShowControllerTest {
     TrackedShow show = show("1", WatchStatus.NOT_WATCHED);
     show.seasons.add(season(1, ep1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleEpisode("1", 1, 1, new ShowController.EpisodeToggle(true));
 
     assertThat(ep1.watched).isTrue();
-    verify(storage).save(eq(USER_ID), eq(show));
+    verify(storage).save(eq(USER_ID), eq(show), anyBoolean());
   }
 
   @Test
@@ -193,7 +224,7 @@ class ShowControllerTest {
     TrackedShow show = show("1", WatchStatus.NOT_WATCHED);
     show.seasons.add(season(1, episode(1, false)));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleEpisode("1", 99, 1, new ShowController.EpisodeToggle(true));
 
@@ -211,7 +242,7 @@ class ShowControllerTest {
     show.seasons.add(season(1, s1e1, s1e2));
     show.seasons.add(season(2, s2e1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleSeason("1", 1, new ShowController.EpisodeToggle(true));
 
@@ -230,7 +261,7 @@ class ShowControllerTest {
     show.seasons.add(season(1, s1e1));
     show.seasons.add(season(2, s2e1));
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(show));
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     controller.toggleAllWatched("1", new ShowController.EpisodeToggle(true));
 
@@ -258,6 +289,7 @@ class ShowControllerTest {
     TrackedShow existing = show("1", WatchStatus.WATCHING_NOW);
     existing.seasons.add(season(1, existingEp));
     existing.tmdbId = 42L;
+    existing.personalRating = 9.0;
 
     Episode freshEp = episode(1, false);
     TrackedShow fresh = show(null, null);
@@ -265,12 +297,13 @@ class ShowControllerTest {
 
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(existing));
     when(metadata.fetchDetails(42L, null)).thenReturn(fresh);
-    when(storage.save(eq(USER_ID), any())).thenAnswer(inv -> inv.getArgument(1));
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     TrackedShow result = controller.refreshShow("1");
 
     assertThat(result.id).isEqualTo("1");
     assertThat(result.watchStatus).isEqualTo(WatchStatus.WATCHING_NOW);
+    assertThat(result.personalRating).isEqualTo(9.0);
     assertThat(freshEp.watched).isTrue(); // carried over from the existing episode
   }
 

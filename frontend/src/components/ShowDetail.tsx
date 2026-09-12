@@ -19,6 +19,18 @@ interface Props {
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
+function ImdbText() {
+  return <span className="rating-imdb-text">IMDb</span>;
+}
+
+function StarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="rating-icon-svg" focusable="false">
+      <path d="M12 17.3l-5.2 2.8 1-5.9L1.5 9.4l6-.9L12 2.9l4.5 5.6 6 .9-6.3 4.8 1 5.9L12 17.3z" fill="currentColor"/>
+    </svg>
+  );
+}
+
 function isAired(ep: Episode): boolean {
   return !ep.airDate || ep.airDate <= TODAY;
 }
@@ -78,11 +90,38 @@ function applyAllWatched(show: TrackedShow, watched: boolean): TrackedShow {
 export function ShowDetail(props: Props) {
   const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus, onTrack, onUntrack } = props;
   const [show, setShow] = useState(initialShow);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [draftRating, setDraftRating] = useState<number | null>(initialShow.personalRating ?? null);
+
   // Keep local state in sync when parent updates the selected show (silent refreshes etc.)
   useEffect(() => {
     setShow(initialShow);
+    setDraftRating(initialShow.personalRating ?? null);
   }, [initialShow]);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const onPopState = () => {
+      setRatingModalOpen(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const openRatingModal = () => {
+    if (!window.history.state || (window.history.state as { modal?: string }).modal !== 'show-rating-modal') {
+      window.history.pushState({ modal: 'show-rating-modal' }, '', window.location.pathname + window.location.search);
+    }
+    setDraftRating(show.personalRating ?? 6.0);
+    setRatingModalOpen(true);
+  };
+
+  const closeRatingModal = () => {
+    setRatingModalOpen(false);
+    if ((window.history.state as { modal?: string } | null)?.modal === 'show-rating-modal') {
+      window.history.back();
+    }
+  };
 
   const toggleExpand = (n: number) =>
     setExpanded(prev => {
@@ -144,6 +183,23 @@ export function ShowDetail(props: Props) {
     }
   };
 
+  const handlePersonalRating = async () => {
+    if (draftRating === null) return;
+    const value = Number(draftRating);
+    try {
+      const confirmed = await api.updatePersonalRating(show.id, value);
+      setShow(confirmed);
+      onUpdate(confirmed);
+      setRatingModalOpen(false);
+      if ((window.history.state as { modal?: string } | null)?.modal === 'show-rating-modal') {
+        window.history.back();
+      }
+    } catch (error) {
+      console.error('Rating save failed', error);
+      alert('Failed to save your rating.');
+    }
+  };
+
   const handleDropped = async (dropped: boolean) => {
     const newStatus = dropped ? 'DROPPED' : 'NOT_WATCHED';
     const optimistic = { ...show, watchStatus: newStatus as WatchStatus };
@@ -173,7 +229,7 @@ export function ShowDetail(props: Props) {
           <div className="modal-meta">
             <h2>{show.title}</h2>
             {/* Track / Untrack button: if an onUntrack handler provided, show Untrack (for My Shows context). Otherwise, show Already tracked (disabled) for previews */}
-            <div style={{ marginTop: '0.5rem' }}>
+            <div className="modal-action-row" style={{ marginTop: '0.5rem' }}>
               {show.id ? (
                 onUntrack ? (
                   <button
@@ -216,6 +272,17 @@ export function ShowDetail(props: Props) {
                   Track this show
                 </button>
               )}
+              {show.id && (
+                <button
+                  className="my-rating-btn"
+                  onClick={e => {
+                    e.stopPropagation();
+                    openRatingModal();
+                  }}
+                >
+                  {show.personalRating != null ? `My Rating: ${show.personalRating.toFixed(1)}/10` : 'My Rating'}
+                </button>
+              )}
             </div>
             <p className="overview">{show.overview}</p>
             <div className="badges">
@@ -225,9 +292,67 @@ export function ShowDetail(props: Props) {
               <span className={`badge status-${show.watchStatus.toLowerCase()}`}>
                 {show.watchStatus.replace(/_/g, ' ')}
               </span>
+              {show.personalRating != null && (
+                <span className="rating-personal" aria-label={`Personal rating ${show.personalRating} out of 10`}>
+                  <StarIcon />
+                  {show.personalRating.toFixed(1).replace(/\.0$/, '')}/10
+                </span>
+              )}
+              {show.imdbRating && (
+                <a
+                  className="rating-imdb"
+                  href={show.imdbId ? `https://www.imdb.com/title/${show.imdbId}/` : undefined}
+                  target={show.imdbId ? '_blank' : undefined}
+                  rel={show.imdbId ? 'noreferrer noopener' : undefined}
+                  aria-label={`IMDb rating ${show.imdbRating} out of 10`}
+                >
+                  <ImdbText />
+                  {show.imdbRating}/10
+                </a>
+              )}
+              {show.rtRating && (
+                <span className="rating-rt" aria-label={`Rotten Tomatoes score ${show.rtRating}`}>
+                  <span aria-hidden="true">🍅</span> {show.rtRating}
+                </span>
+              )}
             </div>
           </div>
         </div>
+
+        {ratingModalOpen && (
+          <div className="rating-modal-backdrop" onClick={closeRatingModal}>
+            <div className="rating-modal" onClick={e => e.stopPropagation()}>
+             <button className="modal-close" onClick={closeRatingModal} aria-label="Close personal rating">✕</button>
+             <h3>My Rating</h3>
+             <div className="rating-editor">
+               <input
+                 type="range"
+                 min={0}
+                 max={10}
+                 step={0.5}
+                 value={draftRating ?? 0}
+                 onChange={e => setDraftRating(Number(e.target.value))}
+                 aria-label="Personal rating"
+               />
+               <div className="rating-scale-labels" aria-hidden="true">
+                 <span>0</span>
+                 <span>2</span>
+                 <span>4</span>
+                 <span>6</span>
+                 <span>8</span>
+                 <span>10</span>
+               </div>
+               <div className="rating-value-display">
+                 {(draftRating ?? 0).toFixed(1).replace(/\.0$/, '')}/10
+               </div>
+             </div>
+             <div className="rating-modal-actions">
+               <button type="button" className="secondary-action" onClick={closeRatingModal}>Close</button>
+               <button type="button" className="primary-action" onClick={handlePersonalRating}>Rate!</button>
+             </div>
+            </div>
+          </div>
+        )}
 
         <label className="mark-all-watched">
           <input

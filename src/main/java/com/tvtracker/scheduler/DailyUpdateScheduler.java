@@ -83,6 +83,8 @@ public class DailyUpdateScheduler {
             log.debug("Show '{}' was updated but has no new episodes — keeping UP_TO_DATE",
                 show.title);
           }
+          // Refresh ratings (OMDb) â€” skips if fresh or not configured
+          metadata.enrichRatings(show);
           storage.save(userId, show, statusChanged);
         } catch (Exception e) {
           log.warn("Failed to refresh show '{}': {}", show.title, e.getMessage());

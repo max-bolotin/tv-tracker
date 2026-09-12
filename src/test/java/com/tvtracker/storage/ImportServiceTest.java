@@ -16,7 +16,7 @@ class ImportServiceTest {
 
     // --- stub MetadataService that returns a show built from the search title ---
     private static com.tvtracker.provider.MetadataService stubMetadata(TrackedShow... returnedShows) {
-        return new com.tvtracker.provider.MetadataService(null, null) {
+        return new com.tvtracker.provider.MetadataService(null, null, null) {
             int callCount = 0;
 
             @Override

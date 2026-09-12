@@ -102,6 +102,16 @@ public class ShowController {
     return storage.save(userId, show, before != body.status());
   }
 
+  @PatchMapping("/{id}/rating")
+  public TrackedShow updatePersonalRating(@PathVariable String id, @RequestBody PersonalRatingUpdate body)
+     throws IOException {
+   String userId = CurrentUserContext.currentUserId();
+   TrackedShow show = storage.findById(userId, id)
+       .orElseThrow(() -> new ShowNotFoundException(id));
+   show.personalRating = body.personalRating();
+   return storage.save(userId, show, false);
+  }
+
   /**
    * Toggle watched state for a specific episode
    */
@@ -181,6 +191,7 @@ public class ShowController {
     TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
     fresh.id = existing.id;
     fresh.watchStatus = existing.watchStatus;
+    fresh.personalRating = existing.personalRating;
     // carry over watched flags for matching episodes
     for (var existingSeason : existing.seasons) {
       fresh.seasons.stream().filter(s -> s.number == existingSeason.number).findFirst()
@@ -228,6 +239,10 @@ public class ShowController {
   }
 
   record StatusUpdate(WatchStatus status) {
+
+  }
+
+  record PersonalRatingUpdate(Double personalRating) {
 
   }
 

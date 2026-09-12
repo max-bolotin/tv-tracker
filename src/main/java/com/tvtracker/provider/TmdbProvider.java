@@ -107,6 +107,20 @@ public class TmdbProvider implements MetadataProvider {
         }
     }
 
+    /** Returns the IMDb ID (e.g. "tt0944947") for a TMDB show, or null if unavailable. */
+    public String fetchImdbId(long tmdbId) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/tv/" + tmdbId + "/external_ids")
+                    .queryParam("api_key", apiKey)
+                    .toUriString();
+            JsonNode root = get(url);
+            String id = root.path("imdb_id").asText(null);
+            return (id != null && !id.isBlank()) ? id : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     // Made public so callers can attempt to re-fetch individual seasons when needed
     public Season fetchSeason(long tmdbId, int seasonNumber) {
         try {

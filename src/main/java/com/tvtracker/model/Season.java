@@ -8,6 +8,9 @@ import java.util.List;
 public class Season {
     public int number;
     public List<Episode> episodes = new ArrayList<>();
+    public String imdbRating;        // e.g. "7.9" or null
+    public String rtRating;          // e.g. "88%" or null
+    public String ratingsUpdatedAt;  // ISO-8601 date string, null if never fetched
 
     public Season() {}
 

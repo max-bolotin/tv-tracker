@@ -61,6 +61,8 @@ public class TvMazeProvider implements MetadataProvider {
             show.posterPath = root.path("image").path("original").asText(null);
             String status = root.path("status").asText("");
             show.productionStatus = status.equalsIgnoreCase("Ended") ? ProductionStatus.ENDED : ProductionStatus.ONGOING;
+            String imdb = root.path("externals").path("imdb").asText(null);
+            if (imdb != null && !imdb.isBlank()) show.imdbId = imdb;
 
             // Build seasons. Use the seasons endpoint so we include seasons even if they have no episodes yet.
             JsonNode seasonsRoot = get(baseUrl + "/shows/" + tvmazeId + "/seasons");
@@ -87,6 +89,17 @@ public class TvMazeProvider implements MetadataProvider {
             return show;
         } catch (Exception e) {
             throw new RuntimeException("TVMaze fetchDetails failed for id=" + tvmazeId, e);
+        }
+    }
+
+    /** Returns the IMDb ID from TVMaze externals for a given tvmazeId, or null if unavailable. */
+    public String fetchImdbId(long tvmazeId) {
+        try {
+            JsonNode root = get(baseUrl + "/shows/" + tvmazeId);
+            String id = root.path("externals").path("imdb").asText(null);
+            return (id != null && !id.isBlank()) ? id : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

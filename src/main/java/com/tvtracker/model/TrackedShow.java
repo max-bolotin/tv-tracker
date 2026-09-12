@@ -17,6 +17,10 @@ public class TrackedShow {
     public ProductionStatus productionStatus = ProductionStatus.ONGOING;
     public WatchStatus watchStatus = WatchStatus.NOT_WATCHED;
     public List<Season> seasons = new ArrayList<>();
+    public String imdbRating;        // e.g. "8.2" or null
+    public String rtRating;          // e.g. "94%" or null
+    public Double personalRating;     // 0.0-10.0 in 0.5 increments, null if unset
+    public String ratingsUpdatedAt;  // ISO-8601 date string, null if never fetched
 
     public TrackedShow() {}
 
@@ -75,6 +79,14 @@ public class TrackedShow {
     // the model to use private fields and property access throughout.
     public String getImdbId() { return imdbId; }
     public void setImdbId(String imdbId) { this.imdbId = imdbId; }
+    public String getImdbRating() { return imdbRating; }
+    public void setImdbRating(String imdbRating) { this.imdbRating = imdbRating; }
+    public String getRtRating() { return rtRating; }
+    public void setRtRating(String rtRating) { this.rtRating = rtRating; }
+    public Double getPersonalRating() { return personalRating; }
+    public void setPersonalRating(Double personalRating) { this.personalRating = personalRating; }
+    public String getRatingsUpdatedAt() { return ratingsUpdatedAt; }
+    public void setRatingsUpdatedAt(String ratingsUpdatedAt) { this.ratingsUpdatedAt = ratingsUpdatedAt; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getPosterPath() { return posterPath; }
