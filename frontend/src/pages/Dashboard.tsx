@@ -153,31 +153,21 @@ export function Dashboard() {
     };
   }, [currentUser]);
 
-  useEffect(() => {
-    // Compute columns based on container width and request full rows (>= MIN_POPULAR)
-    function dedupeShows(shows: any[]) {
-      const seen = new Set<string | number>();
-      const out: any[] = [];
-      for (const s of shows) {
-        const id = s.tmdbId ?? s.tvmazeId ?? (s.title || '').toLowerCase();
-        if (id == null) continue;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push(s);
-      }
-      return out;
-    }
+  function computeCols(width: number): number {
+    if (width < 540) return 3;
+    if (width < 768) return 4;
+    return Math.max(1, Math.floor(width / (160 + 16)));
+  }
 
-    function computeAndFetch() {
+  useEffect(() => {
+    if (tab !== 'POPULAR') return;
+
+    function fetchPopular(currentRows: number) {
       const container = popularRef.current || document.documentElement;
       const width = container.getBoundingClientRect().width || window.innerWidth;
-      // Use min card width matching CSS (160px) + gap (approx 16px)
-      const minCard = 160 + 16;
-      let cols = Math.max(1, Math.floor(width / minCard));
-      // Mobile override: small screens often display more compact cards — prefer 3 columns on narrow widths
-      if (width < 600) cols = 3;
+      const cols = computeCols(width);
       const rowsNeeded = Math.max(1, Math.ceil(MIN_POPULAR / cols));
-      const rows = Math.max(rowsNeeded, popularRows || 0);
+      const rows = Math.max(rowsNeeded, currentRows);
       const limit = rows * cols;
       setPopularRows(rows);
       api.getPopular(limit).then(shows => {
@@ -186,11 +176,13 @@ export function Dashboard() {
       }).catch(() => setPopularShows([]));
     }
 
-    computeAndFetch();
-    const onResize = () => computeAndFetch();
+    // Defer so the grid DOM is painted and popularRef has the correct width
+    const t = setTimeout(() => fetchPopular(popularRows), 50);
+    const onResize = () => fetchPopular(popularRows);
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    return () => { clearTimeout(t); window.removeEventListener('resize', onResize); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -553,12 +545,9 @@ export function Dashboard() {
           </div>
           <div style={{textAlign: 'center', marginTop: '1rem'}}>
             <button className="auth-button" onClick={() => {
-              // add one more row
               const container = popularRef.current || document.documentElement;
               const width = container.getBoundingClientRect().width || window.innerWidth;
-              const minCard = 160 + 16;
-              let cols = Math.max(1, Math.floor(width / minCard));
-              if (width < 600) cols = 3;
+              const cols = computeCols(width);
               const nextRows = Math.max(1, popularRows) + 1;
               const nextLimit = nextRows * cols;
               setPopularRows(nextRows);
