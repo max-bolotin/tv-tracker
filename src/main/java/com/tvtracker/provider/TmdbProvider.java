@@ -1,5 +1,7 @@
 package com.tvtracker.provider;
 
+import static org.slf4j.LoggerFactory.getLogger;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.model.*;
@@ -37,7 +39,7 @@ public class TmdbProvider implements MetadataProvider {
 
     @jakarta.annotation.PostConstruct
     void logConfigStatus() {
-        org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
+        getLogger(TmdbProvider.class)
             .info("TMDB provider configured={}", isConfigured());
     }
 
@@ -158,12 +160,12 @@ public class TmdbProvider implements MetadataProvider {
 
     private void logDebugCast(long tmdbId, List<Actor> cast) {
         if (cast == null || cast.isEmpty()) {
-            org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
-                .info("TMDB credits fetch for show tmdbId={} returned no cast entries", tmdbId);
+            getLogger(TmdbProvider.class)
+                .debug("TMDB credits fetch for show tmdbId={} returned no cast entries", tmdbId);
             return;
         }
-        org.slf4j.LoggerFactory.getLogger(TmdbProvider.class)
-            .info("TMDB credits fetch for show tmdbId={} returned {} cast entries", tmdbId, cast.size());
+        getLogger(TmdbProvider.class)
+            .debug("TMDB credits fetch for show tmdbId={} returned {} cast entries", tmdbId, cast.size());
     }
 
     // Made public so callers can attempt to re-fetch individual seasons when needed
