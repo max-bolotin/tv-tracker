@@ -7,6 +7,7 @@ import com.tvtracker.model.WatchStatus;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.JsonStorageService;
+import java.util.ArrayList;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -196,7 +197,7 @@ public class ShowController {
     fresh.watchStatus = existing.watchStatus;
     fresh.personalRating = existing.personalRating;
     if (fresh.cast == null) {
-      fresh.cast = existing.cast != null ? existing.cast : new java.util.ArrayList<>();
+      fresh.cast = existing.cast != null ? existing.cast : new ArrayList<>();
     } else if (fresh.cast.isEmpty() && existing.cast != null && !existing.cast.isEmpty()) {
       long existingCastSize = existing.cast.size();
       long freshCastSize = fresh.cast.size();

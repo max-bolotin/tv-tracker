@@ -2,6 +2,7 @@ package com.tvtracker.provider;
 
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
+import java.util.ArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +28,7 @@ class MetadataServiceEnrichRatingsTest {
         show.imdbId = imdbId;
         show.tmdbId = tmdbId;
         show.title = "Test Show";
-        show.seasons = new java.util.ArrayList<>();
+        show.seasons = new ArrayList<>();
         for (int n : seasonNumbers) show.seasons.add(new Season(n));
         return show;
     }

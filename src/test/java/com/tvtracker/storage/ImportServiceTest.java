@@ -1,6 +1,7 @@
 package com.tvtracker.storage;
 
 import com.tvtracker.model.*;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -42,10 +43,10 @@ class ImportServiceTest {
         show.title = title;
         show.productionStatus = ProductionStatus.ONGOING;
         show.watchStatus = WatchStatus.NOT_WATCHED;
-        show.seasons = new java.util.ArrayList<>();
+        show.seasons = new ArrayList<>();
         for (int n : seasonNumbers) {
             Season s = new Season(n);
-            s.episodes = new java.util.ArrayList<>(List.of(
+            s.episodes = new ArrayList<>(List.of(
                     new Episode(1, "E1", null),
                     new Episode(2, "E2", null)
             ));
