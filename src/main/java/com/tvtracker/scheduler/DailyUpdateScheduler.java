@@ -27,8 +27,13 @@ public class DailyUpdateScheduler {
 
   @Scheduled(cron = "${app.scheduler.cron}")
   public void checkForNewEpisodes() {
-    log.debug("Running daily episode update check...");
-    doCheck();
+    log.info("Scheduled daily update started");
+    try {
+      doCheck();
+      log.info("Scheduled daily update finished successfully");
+    } catch (Exception e) {
+      log.error("Scheduled daily update failed: {}", e.getMessage(), e);
+    }
   }
 
   static final String DEFAULT_USER_ID = "default";
@@ -37,8 +42,30 @@ public class DailyUpdateScheduler {
    * Called by the manual refresh endpoint — same logic, no cron restriction.
    */
   public void doCheck() {
-    // default behavior (used by scheduler) operates on the default user file
-    doCheck(DEFAULT_USER_ID);
+    // default behavior (used by scheduler/manual trigger) - run for all user files
+    try {
+      List<String> users = storage.listUserIds();
+      log.info("Scheduled daily update: running checks for {} user(s)", users.size());
+      for (String userId : users) {
+        try {
+          // Skip users with no tracked shows to reduce log noise and unnecessary work
+          var userShows = storage.loadAll(userId);
+          if (userShows == null || userShows.isEmpty()) {
+            log.debug("Scheduled daily update: skipping user {} - no tracked shows", userId);
+            continue;
+          }
+
+          log.info("Scheduled daily update: starting check for user {} ({} shows)", userId, userShows.size());
+          doCheck(userId);
+          log.info("Scheduled daily update: finished check for user {}", userId);
+        } catch (Exception e) {
+          log.error("Scheduled daily update: check failed for user {}: {}", userId, e.getMessage(), e);
+        }
+      }
+      log.info("Scheduled daily update: completed all user checks");
+    } catch (Exception e) {
+      log.error("Scheduled daily update: failed to enumerate user files: {}", e.getMessage(), e);
+    }
   }
 
   /**
