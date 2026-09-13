@@ -1,12 +1,16 @@
 package com.tvtracker.provider;
 
+import com.tvtracker.model.Season;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
+import java.util.concurrent.CompletableFuture;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
 
 /**
  * Tries TMDB first; falls back to TVMaze if TMDB is not configured or throws.
@@ -74,11 +78,11 @@ public class MetadataService {
     log.debug("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
         tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
 
-    java.util.concurrent.CompletableFuture<TrackedShow> fTmdb;
-    java.util.concurrent.CompletableFuture<TrackedShow> fTvmaze;
+    CompletableFuture<TrackedShow> fTmdb;
+    CompletableFuture<TrackedShow> fTvmaze;
 
     if (tmdbId != null && tmdb.isConfigured()) {
-      fTmdb = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+      fTmdb = CompletableFuture.supplyAsync(() -> {
         try {
           return tmdb.fetchDetails(tmdbId);
         } catch (Exception e) {
@@ -88,11 +92,11 @@ public class MetadataService {
       });
     } else {
       log.debug("fetchDetails: skipping TMDB call for tmdbId={} because it is null or not configured", tmdbId);
-      fTmdb = java.util.concurrent.CompletableFuture.completedFuture(null);
+      fTmdb = CompletableFuture.completedFuture(null);
     }
 
     if (tvmazeId != null) {
-      fTvmaze = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+      fTvmaze = CompletableFuture.supplyAsync(() -> {
         try {
           return tvmaze.fetchDetails(tvmazeId);
         } catch (Exception e) {
@@ -101,13 +105,13 @@ public class MetadataService {
         }
       });
     } else {
-      fTvmaze = java.util.concurrent.CompletableFuture.completedFuture(null);
+      fTvmaze = CompletableFuture.completedFuture(null);
     }
 
     TrackedShow fromTmdb = null;
     TrackedShow fromTvmaze = null;
     try {
-      java.util.concurrent.CompletableFuture.allOf(fTmdb, fTvmaze).join();
+      CompletableFuture.allOf(fTmdb, fTvmaze).join();
       fromTmdb = fTmdb.getNow(null);
       fromTvmaze = fTvmaze.getNow(null);
     } catch (Exception e) {
@@ -137,7 +141,7 @@ public class MetadataService {
           fromTvmaze.cast != null ? fromTvmaze.cast.size() : 0);
 
       // Build union of season numbers from both providers
-      java.util.Set<Integer> seasonNums = new java.util.TreeSet<>();
+      Set<Integer> seasonNums = new TreeSet<>();
         if (fromTmdb.seasons != null) {
             fromTmdb.seasons.forEach(s -> seasonNums.add(s.number));
         }
@@ -145,7 +149,7 @@ public class MetadataService {
             fromTvmaze.seasons.forEach(s -> seasonNums.add(s.number));
         }
 
-      java.util.List<com.tvtracker.model.Season> mergedSeasons = new java.util.ArrayList<>();
+      List<Season> mergedSeasons = new ArrayList<>();
       for (Integer num : seasonNums) {
         com.tvtracker.model.Season tSeason = (fromTmdb.seasons == null) ? null
             : fromTmdb.seasons.stream().filter(s -> s.number == num).findFirst().orElse(null);
@@ -198,7 +202,7 @@ public class MetadataService {
           continue;
         }
         com.tvtracker.model.Season copy = new com.tvtracker.model.Season(chosen.number);
-        copy.episodes = new java.util.ArrayList<>();
+        copy.episodes = new ArrayList<>();
         if (chosen.episodes != null) {
           for (var ep : chosen.episodes) {
             if (ep.number == 0) {

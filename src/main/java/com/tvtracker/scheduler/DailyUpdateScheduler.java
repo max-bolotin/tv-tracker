@@ -2,15 +2,24 @@ package com.tvtracker.scheduler;
 
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
+import com.tvtracker.model.Season;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.storage.JsonStorageService;
+
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Set;
 
 @Component
 public class DailyUpdateScheduler {
@@ -27,18 +36,125 @@ public class DailyUpdateScheduler {
 
   @Scheduled(cron = "${app.scheduler.cron}")
   public void checkForNewEpisodes() {
-    log.debug("Running daily episode update check...");
-    doCheck();
+    log.info("Scheduled daily update started");
+    try {
+      doCheck();
+      log.info("Scheduled daily update finished successfully");
+    } catch (Exception e) {
+      log.error("Scheduled daily update failed: {}", e.getMessage(), e);
+    }
   }
-
-  static final String DEFAULT_USER_ID = "default";
 
   /**
    * Called by the manual refresh endpoint — same logic, no cron restriction.
    */
   public void doCheck() {
-    // default behavior (used by scheduler) operates on the default user file
-    doCheck(DEFAULT_USER_ID);
+    // default behavior (used by scheduler/manual trigger) - run for all user files
+    try {
+      List<String> users = storage.listUserIds();
+      log.info("Scheduled daily update: running checks for {} user(s)", users.size());
+      // Build map of canonical show key -> list of references (userId + TrackedShow)
+      Map<String, List<Entry<String, TrackedShow>>> showMap = new LinkedHashMap<>();
+      for (String userId : users) {
+        try {
+          var userShows = storage.loadAll(userId);
+          if (userShows == null || userShows.isEmpty()) {
+            log.debug("Scheduled daily update: skipping user {} - no tracked shows", userId);
+            continue;
+          }
+          for (TrackedShow s : userShows) {
+            // Ensure we have TMDB id when possible to allow canonicalization and single fetch
+            try {
+              if (s.tmdbId == null) {
+                metadata.hydrateMissingTmdbId(s);
+              }
+            } catch (Exception e) {
+              log.debug("Scheduled daily update: hydrateMissingTmdbId failed for show '{}' user {}: {}", s.title, userId, e.getMessage());
+            }
+
+            // Determine canonical key: prefer TMDB id, then TVMAZE id, then title
+            String key;
+            if (s.tmdbId != null) key = "tmdb:" + s.tmdbId;
+            else if (s.tvmazeId != null) key = "tvmaze:" + s.tvmazeId;
+            else if (s.title != null) key = "title:" + s.title.trim().toLowerCase();
+            else key = "unknown:" + UUID.randomUUID();
+
+            showMap.computeIfAbsent(key, k -> new ArrayList<>())
+                .add(new AbstractMap.SimpleEntry<>(userId, s));
+          }
+        } catch (Exception e) {
+          log.error("Scheduled daily update: failed to load shows for user {}: {}", userId, e.getMessage(), e);
+        }
+      }
+
+      log.info("Scheduled daily update: built map - {} show-references across {} users, deduped to {} unique shows",
+          showMap.values().stream().mapToInt(List::size).sum(), users.size(), showMap.size());
+
+      // For each unique show, fetch once and apply updates to all user references
+      Set<String> modifiedUsers = new HashSet<>();
+      for (var entry : showMap.entrySet()) {
+        String key = entry.getKey();
+        List<Map.Entry<String, TrackedShow>> refs = entry.getValue();
+        if (refs.isEmpty()) continue;
+
+        // pick representative to decide which ids to use for fetch
+        TrackedShow rep = refs.getFirst().getValue();
+        Long tmdbId = rep.tmdbId;
+        Long tvmazeId = rep.tvmazeId;
+
+        try {
+          TrackedShow fresh = metadata.fetchDetails(tmdbId, tvmazeId);
+          // Apply fresh data to each user copy
+          for (var ref : refs) {
+            String userId = ref.getKey();
+            TrackedShow existing = ref.getValue();
+            try {
+              // hydrate TMDB id if missing
+              if (existing.tmdbId == null && fresh.tmdbId != null) existing.tmdbId = fresh.tmdbId;
+
+              // cast handling: prefer fresh when available, but keep existing non-empty cast when fresh is empty
+              if (fresh.cast != null && (existing.cast == null || existing.cast.isEmpty() || !fresh.cast.isEmpty())) {
+                existing.cast = fresh.cast;
+              }
+
+              // Merge episodes: reuse mergeNewEpisodes semantics by adding missing episodes into existing
+              boolean addedAny = mergeNewEpisodes(existing, fresh);
+
+              // If the show was UP_TO_DATE and we detected new seasons/episodes, move to WATCHING_NOW
+              if (existing.watchStatus == WatchStatus.UP_TO_DATE && addedAny) {
+                existing.watchStatus = WatchStatus.WATCHING_NOW;
+                log.debug("Scheduled daily update: user {} - show '{}' moved to WATCHING_NOW (new episodes)", userId, existing.title);
+              }
+
+              // Ensure personalRating preserved (mergeNewEpisodes preserves other fields)
+              // Refresh ratings for this user's show (enrichRatings is idempotent and skips when OMDb not configured)
+              metadata.enrichRatings(existing);
+
+              // mark this user's data as modified so we persist later
+              modifiedUsers.add(userId);
+            } catch (Exception e) {
+              log.warn("Scheduled daily update: failed applying fresh data for show '{}' to user {}: {}", existing.title, userId, e.getMessage());
+            }
+          }
+        } catch (Exception e) {
+          log.warn("Scheduled daily update: failed to fetch metadata for key {}: {}", key, e.getMessage());
+        }
+      }
+
+      // Persist modified user files
+      for (String userId : modifiedUsers) {
+        try {
+          var shows = storage.loadAll(userId);
+          storage.saveAll(userId, shows);
+          log.info("Scheduled daily update: persisted updated file for user {} ({} shows)", userId, shows.size());
+        } catch (Exception e) {
+          log.error("Scheduled daily update: failed to persist updated shows for user {}: {}", userId, e.getMessage(), e);
+        }
+      }
+      log.info("Scheduled daily update: completed all user checks");
+    } catch (Exception e) {
+      log.error("Scheduled daily update: failed to enumerate user files: {}", e.getMessage(), e);
+    }
   }
 
   /**
@@ -128,8 +244,8 @@ public class DailyUpdateScheduler {
       if (existingSeason.isEmpty()) {
         // only add seasons that contain episodes (and skip episode number 0)
         if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) {
-          var copy = new com.tvtracker.model.Season(freshSeason.number);
-          copy.episodes = new java.util.ArrayList<>();
+          var copy = new Season(freshSeason.number);
+          copy.episodes = new ArrayList<>();
           for (var ep : freshSeason.episodes) {
               if (ep.number == 0) {
                   continue;

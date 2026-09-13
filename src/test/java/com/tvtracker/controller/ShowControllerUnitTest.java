@@ -9,6 +9,7 @@ import com.tvtracker.model.WatchStatus;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.JsonStorageService;
+import java.util.ArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,14 +54,14 @@ class ShowControllerTest {
     TrackedShow show = new TrackedShow();
     show.id = id;
     show.watchStatus = status;
-    show.seasons = new java.util.ArrayList<>();
+    show.seasons = new ArrayList<>();
     return show;
   }
 
   private Season season(int number, Episode... episodes) {
     Season season = new Season();
     season.number = number;
-    season.episodes = new java.util.ArrayList<>(List.of(episodes));
+    season.episodes = new ArrayList<>(List.of(episodes));
     return season;
   }
 

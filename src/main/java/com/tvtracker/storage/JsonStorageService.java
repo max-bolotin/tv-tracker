@@ -167,6 +167,25 @@ public class JsonStorageService {
         return new File(storageRoot, normalizedUserId + ".json");
     }
 
+    /**
+     * Lists all known user IDs by inspecting the storage directory.
+     */
+    public synchronized List<String> listUserIds() {
+        if (legacySingleFileMode) {
+            return List.of("default");
+        }
+        File[] files = storageRoot.listFiles((dir, name) -> name.toLowerCase().endsWith(".json"));
+        if (files == null) return List.of();
+        List<String> ids = new ArrayList<>();
+        for (File f : files) {
+            String name = f.getName();
+            if (name.endsWith(".json")) {
+                ids.add(name.substring(0, name.length() - 5));
+            }
+        }
+        return ids;
+    }
+
     private void ensureDefaultUserFile() throws IOException {
         File file = resolveUserFile("default");
         ensureParentDirectory(file);

@@ -1,5 +1,6 @@
 package com.tvtracker.model;
 
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,7 +27,7 @@ class TrackedShowStatusTest {
         TrackedShow show = new TrackedShow();
         show.productionStatus = prod;
         show.watchStatus = initial;
-        show.seasons = new java.util.ArrayList<>(List.of(seasons));
+        show.seasons = new ArrayList<>(List.of(seasons));
         return show;
     }
 
