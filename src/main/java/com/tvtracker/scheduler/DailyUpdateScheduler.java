@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
 public class DailyUpdateScheduler {
@@ -34,6 +35,7 @@ public class DailyUpdateScheduler {
   private final int omdbStalenessMaxDays;
   private final long omdbRequestPauseMs;
 
+  @Autowired
   public DailyUpdateScheduler(JsonStorageService storage, MetadataService metadata) {
     this(storage, metadata, 7, 21, 1000L);
   }
