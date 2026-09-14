@@ -103,7 +103,8 @@ public class DailyUpdateScheduler {
         Long tvmazeId = rep.tvmazeId;
 
         try {
-          TrackedShow fresh = metadata.fetchDetails(tmdbId, tvmazeId);
+          // Avoid bulk OMDb enrichment from the scheduler to prevent provider auth/rate issues
+          TrackedShow fresh = metadata.fetchDetails(tmdbId, tvmazeId, false);
           // Apply fresh data to each user copy
           for (var ref : refs) {
             String userId = ref.getKey();

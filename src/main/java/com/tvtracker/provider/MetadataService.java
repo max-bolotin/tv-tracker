@@ -75,6 +75,15 @@ public class MetadataService {
   }
 
   public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId) {
+    return fetchDetails(tmdbId, tvmazeId, true);
+  }
+
+  /**
+   * Fetches details and optionally enriches ratings (OMDb).
+   * When called as part of large bulk/scheduler runs, pass enrichRatings=false to avoid
+   * hitting OMDb rate limits or generating many concurrent requests.
+   */
+  public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatingsFlag) {
     log.debug("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
         tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
 
@@ -225,12 +234,12 @@ public class MetadataService {
           fromTmdb.watchStatus != null ? fromTmdb.watchStatus : fromTvmaze.watchStatus;
       log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}",
           merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
-      enrichRatings(merged);
+      if (enrichRatingsFlag) enrichRatings(merged);
       return merged;
     }
 
-    if (fromTmdb != null) { enrichRatings(fromTmdb); return fromTmdb; }
-    if (fromTvmaze != null) { enrichRatings(fromTvmaze); return fromTvmaze; }
+    if (fromTmdb != null) { if (enrichRatingsFlag) enrichRatings(fromTmdb); return fromTmdb; }
+    if (fromTvmaze != null) { if (enrichRatingsFlag) enrichRatings(fromTvmaze); return fromTvmaze; }
     throw new IllegalArgumentException("No valid external ID provided");
   }
 

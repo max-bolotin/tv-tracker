@@ -46,7 +46,7 @@ public class DailyUpdateSchedulerTest {
 
         when(storage.listUserIds()).thenReturn(List.of("u1"));
         when(storage.loadAll("u1")).thenReturn(new ArrayList<>(List.of(existing)));
-        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId)).thenReturn(fresh);
+        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId, false)).thenReturn(fresh);
 
         scheduler.doCheck();
 
@@ -61,7 +61,7 @@ public class DailyUpdateSchedulerTest {
 
         when(storage.listUserIds()).thenReturn(List.of("u2"));
         when(storage.loadAll("u2")).thenReturn(new ArrayList<>(List.of(existing)));
-        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId)).thenReturn(fresh);
+        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId, false)).thenReturn(fresh);
 
         scheduler.doCheck();
 
@@ -76,7 +76,7 @@ public class DailyUpdateSchedulerTest {
 
         when(storage.listUserIds()).thenReturn(List.of("u3"));
         when(storage.loadAll("u3")).thenReturn(new ArrayList<>(List.of(existing)));
-        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId)).thenReturn(fresh);
+        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId, false)).thenReturn(fresh);
 
         scheduler.doCheck();
 
@@ -91,7 +91,7 @@ public class DailyUpdateSchedulerTest {
 
         when(storage.listUserIds()).thenReturn(List.of("u4"));
         when(storage.loadAll("u4")).thenReturn(new ArrayList<>(List.of(existing)));
-        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId)).thenReturn(fresh);
+        when(metadata.fetchDetails(existing.tmdbId, existing.tvmazeId, false)).thenReturn(fresh);
 
         scheduler.doCheck();
 
