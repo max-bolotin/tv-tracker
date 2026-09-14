@@ -29,7 +29,7 @@ public class DailyUpdateSchedulerTest {
 
     @BeforeEach
     void setup() {
-        scheduler = new DailyUpdateScheduler(storage, metadata);
+        scheduler = new DailyUpdateScheduler(storage, metadata, 7, 21, 1000L);
     }
 
     private TrackedShow makeShow(String title, List<Actor> cast) {
