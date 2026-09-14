@@ -1,11 +1,10 @@
 package com.tvtracker.scheduler;
 
+import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
-import com.tvtracker.model.Season;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.storage.JsonStorageService;
-
 import jakarta.annotation.Nullable;
 import java.time.LocalDate;
 import java.util.AbstractMap;
@@ -17,13 +16,12 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class DailyUpdateScheduler {
@@ -84,25 +82,34 @@ public class DailyUpdateScheduler {
                 metadata.hydrateMissingTmdbId(s);
               }
             } catch (Exception e) {
-              log.debug("Scheduled daily update: hydrateMissingTmdbId failed for show '{}' user {}: {}", s.title, userId, e.getMessage());
+              log.debug(
+                  "Scheduled daily update: hydrateMissingTmdbId failed for show '{}' user {}: {}",
+                  s.title, userId, e.getMessage());
             }
 
             // Determine canonical key: prefer TMDB id, then TVMAZE id, then title
             String key;
-            if (s.tmdbId != null) key = "tmdb:" + s.tmdbId;
-            else if (s.tvmazeId != null) key = "tvmaze:" + s.tvmazeId;
-            else if (s.title != null) key = "title:" + s.title.trim().toLowerCase();
-            else key = "unknown:" + UUID.randomUUID();
+            if (s.tmdbId != null) {
+              key = "tmdb:" + s.tmdbId;
+            } else if (s.tvmazeId != null) {
+              key = "tvmaze:" + s.tvmazeId;
+            } else if (s.title != null) {
+              key = "title:" + s.title.trim().toLowerCase();
+            } else {
+              key = "unknown:" + UUID.randomUUID();
+            }
 
             showMap.computeIfAbsent(key, k -> new ArrayList<>())
                 .add(new AbstractMap.SimpleEntry<>(userId, s));
           }
         } catch (Exception e) {
-          log.error("Scheduled daily update: failed to load shows for user {}: {}", userId, e.getMessage(), e);
+          log.error("Scheduled daily update: failed to load shows for user {}: {}", userId,
+              e.getMessage(), e);
         }
       }
 
-      log.info("Scheduled daily update: built map - {} show-references across {} users, deduped to {} unique shows",
+      log.info(
+          "Scheduled daily update: built map - {} show-references across {} users, deduped to {} unique shows",
           showMap.values().stream().mapToInt(List::size).sum(), users.size(), showMap.size());
 
       // For each unique show, fetch once and apply updates to all user references
@@ -110,7 +117,9 @@ public class DailyUpdateScheduler {
       for (var entry : showMap.entrySet()) {
         String key = entry.getKey();
         List<Map.Entry<String, TrackedShow>> refs = entry.getValue();
-        if (refs.isEmpty()) continue;
+        if (refs.isEmpty()) {
+          continue;
+        }
 
         // pick representative to decide which ids to use for fetch
         TrackedShow rep = refs.getFirst().getValue();
@@ -126,10 +135,13 @@ public class DailyUpdateScheduler {
             TrackedShow existing = ref.getValue();
             try {
               // hydrate TMDB id if missing
-              if (existing.tmdbId == null && fresh.tmdbId != null) existing.tmdbId = fresh.tmdbId;
+              if (existing.tmdbId == null && fresh.tmdbId != null) {
+                existing.tmdbId = fresh.tmdbId;
+              }
 
               // cast handling: prefer fresh when available, but keep existing non-empty cast when fresh is empty
-              if (fresh.cast != null && (existing.cast == null || existing.cast.isEmpty() || !fresh.cast.isEmpty())) {
+              if (fresh.cast != null && (existing.cast == null || existing.cast.isEmpty()
+                  || !fresh.cast.isEmpty())) {
                 existing.cast = fresh.cast;
               }
 
@@ -139,7 +151,9 @@ public class DailyUpdateScheduler {
               // If the show was UP_TO_DATE and we detected new seasons/episodes, move to WATCHING_NOW
               if (existing.watchStatus == WatchStatus.UP_TO_DATE && addedAny) {
                 existing.watchStatus = WatchStatus.WATCHING_NOW;
-                log.debug("Scheduled daily update: user {} - show '{}' moved to WATCHING_NOW (new episodes)", userId, existing.title);
+                log.debug(
+                    "Scheduled daily update: user {} - show '{}' moved to WATCHING_NOW (new episodes)",
+                    userId, existing.title);
               }
 
               // Ensure personalRating preserved (mergeNewEpisodes preserves other fields)
@@ -148,11 +162,14 @@ public class DailyUpdateScheduler {
               // mark this user's data as modified so we persist later
               modifiedUsers.add(userId);
             } catch (Exception e) {
-              log.warn("Scheduled daily update: failed applying fresh data for show '{}' to user {}: {}", existing.title, userId, e.getMessage());
+              log.warn(
+                  "Scheduled daily update: failed applying fresh data for show '{}' to user {}: {}",
+                  existing.title, userId, e.getMessage());
             }
           }
         } catch (Exception e) {
-          log.warn("Scheduled daily update: failed to fetch metadata for key {}: {}", key, e.getMessage());
+          log.warn("Scheduled daily update: failed to fetch metadata for key {}: {}", key,
+              e.getMessage());
         }
       }
 
@@ -161,9 +178,11 @@ public class DailyUpdateScheduler {
         try {
           var shows = storage.loadAll(userId);
           storage.saveAll(userId, shows);
-          log.info("Scheduled daily update: persisted updated file for user {} ({} shows)", userId, shows.size());
+          log.info("Scheduled daily update: persisted updated file for user {} ({} shows)", userId,
+              shows.size());
         } catch (Exception e) {
-          log.error("Scheduled daily update: failed to persist updated shows for user {}: {}", userId, e.getMessage(), e);
+          log.error("Scheduled daily update: failed to persist updated shows for user {}: {}",
+              userId, e.getMessage(), e);
         }
       }
 
@@ -175,15 +194,25 @@ public class DailyUpdateScheduler {
         } else {
           List<String> omdbCandidates = new ArrayList<>();
           for (var entry : showMap.entrySet()) {
-            TrackedShow rep = entry.getValue().getFirst().getValue();
+            var refs = entry.getValue();
+            if (refs == null || refs.isEmpty()) {
+              continue;
+            }
+            TrackedShow rep = refs.getFirst().getValue();
             // Determine last fetched timestamp (support both new and legacy fields)
             String lastFetched;
-            try { lastFetched = rep.ratingLastFetched != null ? rep.ratingLastFetched : rep.ratingsUpdatedAt; } catch (Throwable t) { lastFetched = rep.ratingsUpdatedAt; }
+            try {
+              lastFetched = rep == null ? null
+                  : (rep.ratingLastFetched != null ? rep.ratingLastFetched : rep.ratingsUpdatedAt);
+            } catch (Throwable t) {
+              lastFetched = rep == null ? null : rep.ratingsUpdatedAt;
+            }
 
             // If rating exists and latest episode is older than 6 months, skip
-            LocalDate latestAir = getLatestAir(rep);
+            LocalDate latestAir = (rep == null) ? null : getLatestAir(rep);
             boolean hasRating = lastFetched != null;
-            if (hasRating && latestAir != null && latestAir.isBefore(LocalDate.now().minusMonths(6))) {
+            if (hasRating && latestAir != null && latestAir.isBefore(
+                LocalDate.now().minusMonths(6))) {
               // skip re-checking ratings for dormant shows that already have a rating
               continue;
             }
@@ -195,17 +224,26 @@ public class DailyUpdateScheduler {
             } else {
               try {
                 LocalDate f = LocalDate.parse(lastFetched);
-                int threshold = ThreadLocalRandom.current().nextInt(omdbStalenessMinDays, omdbStalenessMaxDays + 1);
-                if (f.isBefore(LocalDate.now().minusDays(threshold))) include = true;
-              } catch (Exception ignore) { include = true; }
+                int threshold = ThreadLocalRandom.current()
+                    .nextInt(omdbStalenessMinDays, omdbStalenessMaxDays + 1);
+                if (f.isBefore(LocalDate.now().minusDays(threshold))) {
+                  include = true;
+                }
+              } catch (Exception ignore) {
+                include = true;
+              }
             }
-            if (include) omdbCandidates.add(entry.getKey());
+            if (include) {
+              omdbCandidates.add(entry.getKey());
+            }
           }
 
           log.info("OMDb enrichment: {} candidate show(s) selected", omdbCandidates.size());
           for (String key : omdbCandidates) {
             var refs = showMap.get(key);
-            if (refs == null || refs.isEmpty()) continue;
+            if (refs == null || refs.isEmpty()) {
+              continue;
+            }
             TrackedShow rep = refs.getFirst().getValue();
             try {
               // strict mode: rethrow OMDb failures so we can stop on 401
@@ -215,7 +253,9 @@ public class DailyUpdateScheduler {
               rep.ratingsUpdatedAt = rep.ratingLastFetched;
 
               // mark all users containing this show as modified
-              for (var ref : refs) modifiedUsers.add(ref.getKey());
+              for (var ref : refs) {
+                modifiedUsers.add(ref.getKey());
+              }
 
             } catch (Exception e) {
               String msg = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -227,7 +267,11 @@ public class DailyUpdateScheduler {
             }
 
             // pause between OMDb requests
-            try { Thread.sleep(omdbRequestPauseMs); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            try {
+              Thread.sleep(omdbRequestPauseMs);
+            } catch (InterruptedException ignored) {
+              Thread.currentThread().interrupt();
+            }
           }
 
           // Persist any user files modified by OMDb pass
@@ -235,9 +279,11 @@ public class DailyUpdateScheduler {
             try {
               var shows = storage.loadAll(userId);
               storage.saveAll(userId, shows);
-              log.info("OMDb enrichment: persisted updated file for user {} ({} shows)", userId, shows.size());
+              log.info("OMDb enrichment: persisted updated file for user {} ({} shows)", userId,
+                  shows.size());
             } catch (Exception e) {
-              log.error("OMDb enrichment: failed to persist updated shows for user {}: {}", userId, e.getMessage(), e);
+              log.error("OMDb enrichment: failed to persist updated shows for user {}: {}", userId,
+                  e.getMessage(), e);
             }
           }
         }
@@ -256,13 +302,20 @@ public class DailyUpdateScheduler {
     LocalDate latestAir = null;
     if (rep.seasons != null) {
       for (var s : rep.seasons) {
-        if (s.episodes == null) continue;
+        if (s.episodes == null) {
+          continue;
+        }
         for (var e : s.episodes) {
-          if (e.airDate == null) continue;
+          if (e.airDate == null) {
+            continue;
+          }
           try {
             LocalDate d = LocalDate.parse(e.airDate);
-            if (latestAir == null || d.isAfter(latestAir)) latestAir = d;
-          } catch (Exception ignore) {}
+            if (latestAir == null || d.isAfter(latestAir)) {
+              latestAir = d;
+            }
+          } catch (Exception ignore) {
+          }
         }
       }
     }
@@ -325,9 +378,9 @@ public class DailyUpdateScheduler {
       // Heal any WATCHING_NOW shows where all episodes are already watched
       // (e.g. stuck there from a previous bug or an empty-season false-positive)
       for (TrackedShow show : shows) {
-          if (show.watchStatus != WatchStatus.WATCHING_NOW) {
-              continue;
-          }
+        if (show.watchStatus != WatchStatus.WATCHING_NOW) {
+          continue;
+        }
         WatchStatus before = show.watchStatus;
         show.recalculateStatus();
         if (show.watchStatus != before) {
@@ -359,9 +412,9 @@ public class DailyUpdateScheduler {
           var copy = new Season(freshSeason.number);
           copy.episodes = new ArrayList<>();
           for (var ep : freshSeason.episodes) {
-              if (ep.number == 0) {
-                  continue;
-              }
+            if (ep.number == 0) {
+              continue;
+            }
             copy.episodes.add(ep);
           }
           if (!copy.episodes.isEmpty()) {
@@ -372,9 +425,9 @@ public class DailyUpdateScheduler {
       } else if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) {
         var es = existingSeason.get();
         for (var freshEp : freshSeason.episodes) {
-            if (freshEp.number == 0) {
-                continue;
-            }
+          if (freshEp.number == 0) {
+            continue;
+          }
           boolean alreadyExists = es.episodes.stream().anyMatch(e -> e.number == freshEp.number);
           if (!alreadyExists) {
             es.episodes.add(freshEp);
