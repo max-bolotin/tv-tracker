@@ -6,6 +6,8 @@ import com.tvtracker.model.Season;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.storage.JsonStorageService;
 
+import jakarta.annotation.Nullable;
+import java.time.LocalDate;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -16,11 +18,12 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class DailyUpdateScheduler {
@@ -35,14 +38,10 @@ public class DailyUpdateScheduler {
   private final int omdbStalenessMaxDays;
   private final long omdbRequestPauseMs;
 
-  @Autowired
-  public DailyUpdateScheduler(JsonStorageService storage, MetadataService metadata) {
-    this(storage, metadata, 7, 21, 1000L);
-  }
-
-  // Used by tests to pass deterministic config
   public DailyUpdateScheduler(JsonStorageService storage, MetadataService metadata,
-                              int omdbStalenessMinDays, int omdbStalenessMaxDays, long omdbRequestPauseMs) {
+      @Value("${omdb.rating.staleness-min-days:7}") int omdbStalenessMinDays,
+      @Value("${omdb.rating.staleness-max-days:21}") int omdbStalenessMaxDays,
+      @Value("${omdb.rating.request-pause-ms:1000}") long omdbRequestPauseMs) {
     this.storage = storage;
     this.metadata = metadata;
     this.omdbStalenessMinDays = omdbStalenessMinDays;
@@ -174,7 +173,7 @@ public class DailyUpdateScheduler {
         if (!metadata.isOmdbConfigured()) {
           log.debug("OMDb not configured — skipping rating enrichment pass");
         } else {
-          java.util.List<String> omdbCandidates = new java.util.ArrayList<>();
+          List<String> omdbCandidates = new ArrayList<>();
           for (var entry : showMap.entrySet()) {
             TrackedShow rep = entry.getValue().getFirst().getValue();
             // Determine last fetched timestamp (support both new and legacy fields)
@@ -182,21 +181,9 @@ public class DailyUpdateScheduler {
             try { lastFetched = rep.ratingLastFetched != null ? rep.ratingLastFetched : rep.ratingsUpdatedAt; } catch (Throwable t) { lastFetched = rep.ratingsUpdatedAt; }
 
             // If rating exists and latest episode is older than 6 months, skip
-            java.time.LocalDate latestAir = null;
-            if (rep.seasons != null) {
-              for (var s : rep.seasons) {
-                if (s.episodes == null) continue;
-                for (var e : s.episodes) {
-                  if (e.airDate == null) continue;
-                  try {
-                    java.time.LocalDate d = java.time.LocalDate.parse(e.airDate);
-                    if (latestAir == null || d.isAfter(latestAir)) latestAir = d;
-                  } catch (Exception ignore) {}
-                }
-              }
-            }
+            LocalDate latestAir = getLatestAir(rep);
             boolean hasRating = lastFetched != null;
-            if (hasRating && latestAir != null && latestAir.isBefore(java.time.LocalDate.now().minusMonths(6))) {
+            if (hasRating && latestAir != null && latestAir.isBefore(LocalDate.now().minusMonths(6))) {
               // skip re-checking ratings for dormant shows that already have a rating
               continue;
             }
@@ -207,9 +194,9 @@ public class DailyUpdateScheduler {
               include = true;
             } else {
               try {
-                java.time.LocalDate f = java.time.LocalDate.parse(lastFetched);
-                int threshold = java.util.concurrent.ThreadLocalRandom.current().nextInt(omdbStalenessMinDays, omdbStalenessMaxDays + 1);
-                if (f.isBefore(java.time.LocalDate.now().minusDays(threshold))) include = true;
+                LocalDate f = LocalDate.parse(lastFetched);
+                int threshold = ThreadLocalRandom.current().nextInt(omdbStalenessMinDays, omdbStalenessMaxDays + 1);
+                if (f.isBefore(LocalDate.now().minusDays(threshold))) include = true;
               } catch (Exception ignore) { include = true; }
             }
             if (include) omdbCandidates.add(entry.getKey());
@@ -244,7 +231,7 @@ public class DailyUpdateScheduler {
           }
 
           // Persist any user files modified by OMDb pass
-          for (String userId : new java.util.HashSet<>(modifiedUsers)) {
+          for (String userId : new HashSet<>(modifiedUsers)) {
             try {
               var shows = storage.loadAll(userId);
               storage.saveAll(userId, shows);
@@ -262,6 +249,24 @@ public class DailyUpdateScheduler {
     } catch (Exception e) {
       log.error("Scheduled daily update: failed to enumerate user files: {}", e.getMessage(), e);
     }
+  }
+
+  @Nullable
+  private static LocalDate getLatestAir(TrackedShow rep) {
+    LocalDate latestAir = null;
+    if (rep.seasons != null) {
+      for (var s : rep.seasons) {
+        if (s.episodes == null) continue;
+        for (var e : s.episodes) {
+          if (e.airDate == null) continue;
+          try {
+            LocalDate d = LocalDate.parse(e.airDate);
+            if (latestAir == null || d.isAfter(latestAir)) latestAir = d;
+          } catch (Exception ignore) {}
+        }
+      }
+    }
+    return latestAir;
   }
 
   /**
