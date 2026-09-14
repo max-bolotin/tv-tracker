@@ -79,6 +79,14 @@ public class MetadataService {
   }
 
   /**
+   * Returns whether OMDb provider has been configured. Exposed for callers (scheduler/tests) to
+   * decide whether to run the OMDb enrichment pass without using reflection.
+   */
+  public boolean isOmdbConfigured() {
+    return omdb != null && omdb.isConfigured();
+  }
+
+  /**
    * Fetches details and optionally enriches ratings (OMDb).
    * When called as part of large bulk/scheduler runs, pass enrichRatings=false to avoid
    * hitting OMDb rate limits or generating many concurrent requests.
@@ -247,6 +255,15 @@ public class MetadataService {
    * Resolves imdbId via TMDB external_ids if missing, then enriches show and season ratings via OMDb.
    */
   public void enrichRatings(TrackedShow show) {
+    enrichRatings(show, false);
+  }
+
+  /**
+   * Enrich ratings via OMDb. If strict==true, rethrow exceptions from OMDb so callers can react
+   * (used by scheduler to stop on 401). If strict==false, exceptions are logged and swallowed
+   * (existing behavior).
+   */
+  public void enrichRatings(TrackedShow show, boolean strict) {
     if (!omdb.isConfigured()) return;
     try {
       if (show.imdbId == null && show.tmdbId != null && tmdb.isConfigured()) {
@@ -267,6 +284,7 @@ public class MetadataService {
         omdb.enrichSeason(show, season);
       }
     } catch (Exception e) {
+      if (strict) throw e;
       log.warn("enrichRatings failed for show={}: {}", show.title, e.getMessage());
     }
   }

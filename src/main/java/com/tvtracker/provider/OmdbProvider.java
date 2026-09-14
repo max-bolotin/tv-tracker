@@ -125,7 +125,10 @@ public class OmdbProvider {
     private JsonNode get(String url) throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() != 200) throw new RuntimeException("HTTP " + resp.statusCode());
+        if (resp.statusCode() != 200) {
+            String body = resp.body();
+            throw new RuntimeException("HTTP " + resp.statusCode() + " - " + body);
+        }
         return mapper.readTree(resp.body());
     }
 }

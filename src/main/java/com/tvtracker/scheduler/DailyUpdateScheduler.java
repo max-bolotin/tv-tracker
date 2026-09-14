@@ -29,9 +29,23 @@ public class DailyUpdateScheduler {
   private final JsonStorageService storage;
   private final MetadataService metadata;
 
+  // OMDb throttling and staleness configuration
+  private final int omdbStalenessMinDays;
+  private final int omdbStalenessMaxDays;
+  private final long omdbRequestPauseMs;
+
   public DailyUpdateScheduler(JsonStorageService storage, MetadataService metadata) {
+    this(storage, metadata, 7, 21, 1000L);
+  }
+
+  // Used by tests to pass deterministic config
+  public DailyUpdateScheduler(JsonStorageService storage, MetadataService metadata,
+                              int omdbStalenessMinDays, int omdbStalenessMaxDays, long omdbRequestPauseMs) {
     this.storage = storage;
     this.metadata = metadata;
+    this.omdbStalenessMinDays = omdbStalenessMinDays;
+    this.omdbStalenessMaxDays = omdbStalenessMaxDays;
+    this.omdbRequestPauseMs = omdbRequestPauseMs;
   }
 
   @Scheduled(cron = "${app.scheduler.cron}")
@@ -128,8 +142,7 @@ public class DailyUpdateScheduler {
               }
 
               // Ensure personalRating preserved (mergeNewEpisodes preserves other fields)
-              // Refresh ratings for this user's show (enrichRatings is idempotent and skips when OMDb not configured)
-              metadata.enrichRatings(existing);
+              // Do NOT enrich ratings here — a single deduped OMDb pass will run later
 
               // mark this user's data as modified so we persist later
               modifiedUsers.add(userId);
@@ -152,6 +165,97 @@ public class DailyUpdateScheduler {
           log.error("Scheduled daily update: failed to persist updated shows for user {}: {}", userId, e.getMessage(), e);
         }
       }
+
+      // --- OMDb rating enrichment pass (deduped, throttled, randomized staleness) ---
+      try {
+        // Check OMDb configured via MetadataService helper
+        if (!metadata.isOmdbConfigured()) {
+          log.debug("OMDb not configured — skipping rating enrichment pass");
+        } else {
+          java.util.List<String> omdbCandidates = new java.util.ArrayList<>();
+          for (var entry : showMap.entrySet()) {
+            TrackedShow rep = entry.getValue().getFirst().getValue();
+            // Determine last fetched timestamp (support both new and legacy fields)
+            String lastFetched;
+            try { lastFetched = rep.ratingLastFetched != null ? rep.ratingLastFetched : rep.ratingsUpdatedAt; } catch (Throwable t) { lastFetched = rep.ratingsUpdatedAt; }
+
+            // If rating exists and latest episode is older than 6 months, skip
+            java.time.LocalDate latestAir = null;
+            if (rep.seasons != null) {
+              for (var s : rep.seasons) {
+                if (s.episodes == null) continue;
+                for (var e : s.episodes) {
+                  if (e.airDate == null) continue;
+                  try {
+                    java.time.LocalDate d = java.time.LocalDate.parse(e.airDate);
+                    if (latestAir == null || d.isAfter(latestAir)) latestAir = d;
+                  } catch (Exception ignore) {}
+                }
+              }
+            }
+            boolean hasRating = lastFetched != null;
+            if (hasRating && latestAir != null && latestAir.isBefore(java.time.LocalDate.now().minusMonths(6))) {
+              // skip re-checking ratings for dormant shows that already have a rating
+              continue;
+            }
+
+            // Randomized staleness window
+            boolean include = false;
+            if (lastFetched == null) {
+              include = true;
+            } else {
+              try {
+                java.time.LocalDate f = java.time.LocalDate.parse(lastFetched);
+                int threshold = java.util.concurrent.ThreadLocalRandom.current().nextInt(omdbStalenessMinDays, omdbStalenessMaxDays + 1);
+                if (f.isBefore(java.time.LocalDate.now().minusDays(threshold))) include = true;
+              } catch (Exception ignore) { include = true; }
+            }
+            if (include) omdbCandidates.add(entry.getKey());
+          }
+
+          log.info("OMDb enrichment: {} candidate show(s) selected", omdbCandidates.size());
+          for (String key : omdbCandidates) {
+            var refs = showMap.get(key);
+            if (refs == null || refs.isEmpty()) continue;
+            TrackedShow rep = refs.getFirst().getValue();
+            try {
+              // strict mode: rethrow OMDb failures so we can stop on 401
+              metadata.enrichRatings(rep, true);
+              // update both fields for compatibility
+              rep.ratingLastFetched = java.time.LocalDate.now().toString();
+              rep.ratingsUpdatedAt = rep.ratingLastFetched;
+
+              // mark all users containing this show as modified
+              for (var ref : refs) modifiedUsers.add(ref.getKey());
+
+            } catch (Exception e) {
+              String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+              log.warn("OMDb enrichment failed for '{}': {}", rep.title, msg);
+              if (msg.contains("HTTP 401")) {
+                log.warn("OMDb returned 401 — halting OMDb enrichment for this run");
+                break;
+              }
+            }
+
+            // pause between OMDb requests
+            try { Thread.sleep(omdbRequestPauseMs); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+          }
+
+          // Persist any user files modified by OMDb pass
+          for (String userId : new java.util.HashSet<>(modifiedUsers)) {
+            try {
+              var shows = storage.loadAll(userId);
+              storage.saveAll(userId, shows);
+              log.info("OMDb enrichment: persisted updated file for user {} ({} shows)", userId, shows.size());
+            } catch (Exception e) {
+              log.error("OMDb enrichment: failed to persist updated shows for user {}: {}", userId, e.getMessage(), e);
+            }
+          }
+        }
+      } catch (Exception e) {
+        log.error("OMDb enrichment pass failed: {}", e.getMessage(), e);
+      }
+
       log.info("Scheduled daily update: completed all user checks");
     } catch (Exception e) {
       log.error("Scheduled daily update: failed to enumerate user files: {}", e.getMessage(), e);
