@@ -22,6 +22,7 @@ public class TrackedShow {
     public String rtRating;          // e.g. "94%" or null
     public Double personalRating;     // 0.0-10.0 in 0.5 increments, null if unset
     public String ratingsUpdatedAt;  // ISO-8601 date string, null if never fetched
+    public String ratingLastFetched; // new: alias / per-scheduler marker, ISO-8601, nullable
 
     public TrackedShow() {}
 
