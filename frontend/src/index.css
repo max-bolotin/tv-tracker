@@ -152,16 +152,33 @@ body {
 /* Tabs — horizontal scrollable material-style underline bar */
 .tabs {
   display: flex;
-  margin-bottom: 1.5rem;
   border-bottom: 2px solid #2a2a3a;
   overflow-x: auto;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
   -ms-overflow-style: none;
   gap: 0;
   position: sticky;
   top: 0;
   z-index: 50;
   background: #0f0f13;
+  /* prevent the bottom border from being clipped when sticky */
+  padding-bottom: 0;
+  margin-bottom: 1.5rem;
+  /* ensure full-width coverage so no background bleeds through */
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  width: calc(100% + 2rem);
+}
+@media (min-width: 768px) {
+  .tabs {
+    margin-left: -2rem;
+    margin-right: -2rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+    width: calc(100% + 4rem);
+  }
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -668,28 +685,25 @@ body {
 
 
 /* Tab content slide animation */
-.tab-content {
-  overflow: hidden;
-}
 .tab-content.slide-left {
-  animation: slideInLeft 0.26s ease;
+  animation: slideInLeft 0.22s ease-out;
 }
 .tab-content.slide-right {
-  animation: slideInRight 0.26s ease;
+  animation: slideInRight 0.22s ease-out;
 }
 .popular-grid.slide-left {
-  animation: slideInLeft 0.26s ease;
+  animation: slideInLeft 0.22s ease-out;
 }
 .popular-grid.slide-right {
-  animation: slideInRight 0.26s ease;
+  animation: slideInRight 0.22s ease-out;
 }
 @keyframes slideInLeft {
-  from { opacity: 0.4; transform: translateX(40px); }
-  to   { opacity: 1;   transform: translateX(0); }
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 @keyframes slideInRight {
-  from { opacity: 0.4; transform: translateX(-40px); }
-  to   { opacity: 1;   transform: translateX(0); }
+  from { opacity: 0; transform: translateX(-32px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 /* All-tab section dividers */
