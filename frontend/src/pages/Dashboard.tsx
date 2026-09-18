@@ -420,6 +420,22 @@ export function Dashboard() {
     setAllShows([]);
   };
 
+  // On mount: establish POPULAR as the history root, then push myShows if starting on a My Shows tab.
+  // This ensures back always lands on POPULAR regardless of how the user arrived.
+  const historyBootstrapped = useRef(false);
+  useEffect(() => {
+    if (historyBootstrapped.current) return;
+    historyBootstrapped.current = true;
+    const startTab = tab;
+    // Replace current entry with the POPULAR root
+    history.replaceState({ popular: true }, '');
+    if (startTab !== 'POPULAR') {
+      // Push a single myShows entry on top
+      history.pushState({ myShows: true }, '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const TAB_VALUES = TABS.map(t => t.value);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
@@ -448,15 +464,28 @@ export function Dashboard() {
     switchTab(newTab, dir);
   }, [tab, TAB_VALUES, switchTab]);
 
-  // Back button: if on My Shows tab and no modal open, go to POPULAR
+  // Keep a ref to tab so the popstate handler always sees the current value
+  const tabRef = useRef(tab);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+
+  // Back button handler
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
       if (selected || preview) { closeAll(); return; }
-      if (!e.state?.myShows && tab !== 'POPULAR') switchTab('POPULAR', 'right');
+      if (e.state?.myShows) {
+        // landed on myShows entry — nothing to do, tab state is already correct
+        return;
+      }
+      // landed on popular root (or unknown) — go to POPULAR
+      if (tabRef.current !== 'POPULAR') {
+        switchTab('POPULAR', 'right');
+        // Re-push the myShows entry so the next back goes to popular root again
+        // (browser already popped to popular root, so we just stay here)
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [tab, selected, preview, switchTab, closeAll]);
+  }, [selected, preview, switchTab, closeAll]);
 
   // Swipe: only active when touch starts inside the grid, not in modal or tabs row
   const swipeTouchStart = useRef<number | null>(null);
