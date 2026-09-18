@@ -158,6 +158,10 @@ body {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none;
   gap: 0;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #0f0f13;
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -651,6 +655,7 @@ body {
 /* Mobile header: collapse header-nav and show hamburger */
 .hamburger { display: none; background: transparent; border: none; color: #c0c0e0; font-size: 1.2rem; cursor: pointer; }
 .mobile-menu { position: absolute; right: 1rem; top: 66px; background: #17171a; border: 1px solid #2a2a3a; padding: 0.5rem; border-radius: 8px; display: none; z-index: 500; min-width: 160px; }
+.mobile-menu-backdrop { position: fixed; inset: 0; z-index: 499; }
 .mobile-menu button { display: block; width: 100%; text-align: left; margin: 0.25rem 0; white-space: nowrap; }
 @media (max-width: 700px) {
   /* hide action buttons but keep hamburger and user-pill */
@@ -661,6 +666,31 @@ body {
   .mobile-menu { display: block; }
 }
 
+
+/* Tab content slide animation */
+.tab-content {
+  overflow: hidden;
+}
+.tab-content.slide-left {
+  animation: slideInLeft 0.26s ease;
+}
+.tab-content.slide-right {
+  animation: slideInRight 0.26s ease;
+}
+.popular-grid.slide-left {
+  animation: slideInLeft 0.26s ease;
+}
+.popular-grid.slide-right {
+  animation: slideInRight 0.26s ease;
+}
+@keyframes slideInLeft {
+  from { opacity: 0.4; transform: translateX(40px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0.4; transform: translateX(-40px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
 
 /* All-tab section dividers */
 .section-divider {

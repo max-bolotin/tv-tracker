@@ -61,6 +61,8 @@ export function Dashboard() {
   const localWrites = useRef(0);
   const silentRefreshes = useRef(new Set<string>());
   const [menuOpen, setMenuOpen] = useState(false);
+  const [slideDir, setSlideDir] = useState<'left'|'right'|null>(null);
+  const slideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   function dedupeShows(shows: any[]) {
     const seen = new Set<string | number>();
@@ -207,12 +209,6 @@ export function Dashboard() {
     setSelected(null);
     setPreview(null);
   }, []);
-
-  useEffect(() => {
-    const onPop = () => closeAll();
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [closeAll]);
 
   const refreshShowSilently = useCallback(async (show: TrackedShow) => {
     if (!show.id || silentRefreshes.current.has(show.id)) return;
@@ -427,29 +423,64 @@ export function Dashboard() {
   const TAB_VALUES = TABS.map(t => t.value);
   const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  // Scroll active tab into view whenever tab changes (needed after swipe)
   useEffect(() => {
     tabRefs.current.get(tab as string)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [tab]);
 
-  // Swipe left/right on the grid area switches tabs (mobile only)
+  const switchTab = useCallback((newTab: typeof tab, dir: 'left'|'right') => {
+    if (slideTimer.current) clearTimeout(slideTimer.current);
+    setSlideDir(dir);
+    setTab(newTab);
+    slideTimer.current = setTimeout(() => setSlideDir(null), 260);
+  }, []);
+
+  const handleTabClick = useCallback((newTab: typeof tab) => {
+    if (newTab === tab) return;
+    const idx = TAB_VALUES.indexOf(newTab);
+    const curIdx = TAB_VALUES.indexOf(tab);
+    const dir: 'left'|'right' = idx > curIdx ? 'left' : 'right';
+    if (newTab === 'POPULAR') {
+      if (history.state?.myShows) history.back();
+    } else {
+      if (!history.state?.myShows) history.pushState({ myShows: true }, '');
+      else history.replaceState({ myShows: true }, '');
+    }
+    switchTab(newTab, dir);
+  }, [tab, TAB_VALUES, switchTab]);
+
+  // Back button: if on My Shows tab and no modal open, go to POPULAR
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      if (selected || preview) { closeAll(); return; }
+      if (!e.state?.myShows && tab !== 'POPULAR') switchTab('POPULAR', 'right');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [tab, selected, preview, switchTab, closeAll]);
+
+  // Swipe: only active when touch starts inside the grid, not in modal or tabs row
   const swipeTouchStart = useRef<number | null>(null);
   const swipeTouchStartY = useRef<number | null>(null);
+  const swipeInGrid = useRef(false);
   const handleGridTouchStart = (e: React.TouchEvent) => {
+    const inGrid = !!(e.target as HTMLElement).closest('.show-grid,.popular-grid,.auth-gate,.empty');
+    swipeInGrid.current = inGrid;
+    if (!inGrid) return;
     swipeTouchStart.current = e.touches[0].clientX;
     swipeTouchStartY.current = e.touches[0].clientY;
   };
   const handleGridTouchEnd = (e: React.TouchEvent) => {
-    if (swipeTouchStart.current === null) return;
+    if (!swipeInGrid.current || swipeTouchStart.current === null) return;
     const dx = e.changedTouches[0].clientX - swipeTouchStart.current;
     const dy = e.changedTouches[0].clientY - (swipeTouchStartY.current ?? 0);
     swipeTouchStart.current = null;
     swipeTouchStartY.current = null;
-    // require horizontal movement > 60px AND at least 2x the vertical movement
+    swipeInGrid.current = false;
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+    if (selected || preview) return;
     const idx = TAB_VALUES.indexOf(tab);
-    if (dx < 0 && idx < TAB_VALUES.length - 1) setTab(TAB_VALUES[idx + 1]);
-    if (dx > 0 && idx > 0) setTab(TAB_VALUES[idx - 1]);
+    if (dx < 0 && idx < TAB_VALUES.length - 1) switchTab(TAB_VALUES[idx + 1], 'left');
+    if (dx > 0 && idx > 0) switchTab(TAB_VALUES[idx - 1], 'right');
   };
 
   const gridProps = {
@@ -494,26 +525,19 @@ export function Dashboard() {
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
-                  <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-                    <button onClick={() => {
-                      handleExport();
-                    }}>Export
-                    </button>
-                    <button onClick={() => {
-                      importRef.current?.click();
-                    }}>Import
-                    </button>
-                    <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
-                    {currentUser ? (
-                        <button onClick={() => {
-                          handleSignOut();
-                        }}>Log out</button>
-                    ) : (
-                        <button onClick={() => {
-                          handleSignIn();
-                        }}>Sign in</button>
-                    )}
-                  </div>
+                  <>
+                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu">
+                      <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
+                      <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
+                      <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                      {currentUser ? (
+                          <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                      ) : (
+                          <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                      )}
+                    </div>
+                  </>
               )}
             </nav>
           </header>
@@ -526,14 +550,14 @@ export function Dashboard() {
                     key={t.value}
                     ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                     className={tab === t.value ? 'tab active' : 'tab'}
-                    onClick={() => setTab(t.value)}
+                    onClick={() => handleTabClick(t.value)}
                 >
                   {t.label}
                 </button>
             ))}
           </div>
 
-          <div className="popular-grid" ref={el => {
+          <div className={`popular-grid${slideDir ? ` slide-${slideDir}` : ''}`} ref={el => {
             popularRef.current = el;
           }}>
             {popularShows.map(p => (
@@ -627,9 +651,12 @@ export function Dashboard() {
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
-                  <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-                    <button onClick={() => handleSignIn()}>Sign in</button>
-                  </div>
+                  <>
+                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu">
+                      <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                    </div>
+                  </>
               )}
             </nav>
           </header>
@@ -642,7 +669,7 @@ export function Dashboard() {
                     key={t.value}
                     ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                     className={tab === t.value ? 'tab active' : 'tab'}
-                    onClick={() => setTab(t.value)}
+                    onClick={() => handleTabClick(t.value)}
                 >
                   {t.label}
                 </button>
@@ -734,12 +761,15 @@ export function Dashboard() {
                     aria-label="Open menu">☰
             </button>
             {menuOpen && (
-                <div className="mobile-menu" onClick={() => setMenuOpen(false)}>
-                  <button onClick={() => handleExport()}>Export</button>
-                  <button onClick={() => importRef.current?.click()}>Import</button>
-                  <button onClick={() => api.getShows().then(setAllShows)}>Refresh</button>
-                  <button onClick={() => handleSignOut()}>Log out</button>
-                </div>
+                <>
+                  <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                  <div className="mobile-menu">
+                    <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
+                    <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
+                    <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                    <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                  </div>
+                </>
             )}
           </nav>
         </header>
@@ -752,28 +782,30 @@ export function Dashboard() {
                   key={t.value}
                   ref={el => { if (el) tabRefs.current.set(t.value, el); else tabRefs.current.delete(t.value); }}
                   className={tab === t.value ? 'tab active' : 'tab'}
-                  onClick={() => setTab(t.value)}
+                  onClick={() => handleTabClick(t.value)}
               >
                 {t.label}
               </button>
           ))}
         </div>
 
-        {groups ? (
-            groups.length === 0
-                ? <p className="empty">No shows yet. Search and add one!</p>
-                : groups.map((g, i) => (
-                    <div key={g.status}>
-                      {i > 0 && <hr className="section-divider"/>}
-                      <h2 className="section-heading">{STATUS_LABELS[g.status]}</h2>
-                      <DraggableGrid {...gridProps} visibleShows={g.shows}/>
-                    </div>
-                ))
-        ) : (
-            visibleShows.length === 0
-                ? <p className="empty">No shows here yet.</p>
-                : <DraggableGrid {...gridProps} visibleShows={visibleShows}/>
-        )}
+        <div className={`tab-content${slideDir ? ` slide-${slideDir}` : ''}`}>
+          {groups ? (
+              groups.length === 0
+                  ? <p className="empty">No shows yet. Search and add one!</p>
+                  : groups.map((g, i) => (
+                      <div key={g.status}>
+                        {i > 0 && <hr className="section-divider"/>}
+                        <h2 className="section-heading">{STATUS_LABELS[g.status]}</h2>
+                        <DraggableGrid {...gridProps} visibleShows={g.shows}/>
+                      </div>
+                  ))
+          ) : (
+              visibleShows.length === 0
+                  ? <p className="empty">No shows here yet.</p>
+                  : <DraggableGrid {...gridProps} visibleShows={visibleShows}/>
+          )}
+        </div>
 
         {selected && (
             <ShowDetail
