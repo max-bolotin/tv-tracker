@@ -6,6 +6,7 @@ interface Props {
   show: TrackedShow;
   onClose: () => void;
   onUpdate: (updated: TrackedShow) => void;
+  onBeforeWrite?: () => void;
   // Optional handlers: if provided they are used instead of internal API calls.
   onToggleEpisode?: (id: string | null, seasonNum: number, epNum: number, watched: boolean) => Promise<TrackedShow>;
   onToggleSeason?: (id: string | null, seasonNum: number, watched: boolean) => Promise<TrackedShow>;
@@ -88,7 +89,7 @@ function applyAllWatched(show: TrackedShow, watched: boolean): TrackedShow {
 }
 
 export function ShowDetail(props: Props) {
-  const { show: initialShow, onClose, onUpdate, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus, onTrack, onUntrack } = props;
+  const { show: initialShow, onClose, onUpdate, onBeforeWrite, onToggleEpisode, onToggleSeason, onToggleAllWatched, onUpdateStatus, onTrack, onUntrack } = props;
   const [show, setShow] = useState(initialShow);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
@@ -131,10 +132,10 @@ export function ShowDetail(props: Props) {
     });
 
   const handleEpisode = async (seasonNum: number, epNum: number, watched: boolean) => {
-    // Optimistic update
     const optimistic = applyEpisode(show, seasonNum, epNum, watched);
     setShow(optimistic);
     onUpdate(optimistic);
+    onBeforeWrite?.();
     try {
       const confirmed = await (onToggleEpisode
         ? onToggleEpisode(show.id || null, seasonNum, epNum, watched)
@@ -153,6 +154,7 @@ export function ShowDetail(props: Props) {
     const optimistic = applySeason(show, seasonNum, watched);
     setShow(optimistic);
     onUpdate(optimistic);
+    onBeforeWrite?.();
     try {
       const confirmed = await (onToggleSeason
         ? onToggleSeason(show.id || null, seasonNum, watched)
@@ -170,6 +172,7 @@ export function ShowDetail(props: Props) {
     const optimistic = applyAllWatched(show, watched);
     setShow(optimistic);
     onUpdate(optimistic);
+    onBeforeWrite?.();
     try {
       const confirmed = await (onToggleAllWatched
         ? onToggleAllWatched(show.id || null, watched)
@@ -205,6 +208,7 @@ export function ShowDetail(props: Props) {
     const optimistic = { ...show, watchStatus: newStatus as WatchStatus };
     setShow(optimistic);
     onUpdate(optimistic);
+    onBeforeWrite?.();
     try {
       const confirmed = await (onUpdateStatus
         ? onUpdateStatus(show.id || null, newStatus as WatchStatus)

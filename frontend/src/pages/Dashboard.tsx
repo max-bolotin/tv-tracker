@@ -293,23 +293,25 @@ export function Dashboard() {
     if (selected?.id === id) setSelected(null);
   };
 
+  // Called by ShowDetail just before it fires an API write, so SSE suppresses the echo.
+  const handleBeforeWrite = useCallback(() => { localWrites.current++; }, []);
+
   const handleUpdate = (updated: TrackedShow) => {
-    localWrites.current++;
     setAllShows(prev => {
       const idx = prev.findIndex(s => s.id === updated.id);
       if (idx === -1) return prev;
       const old = prev[idx];
-      // status changed — move to front so it appears first in its new tab
       if (old.watchStatus !== updated.watchStatus) {
         const next = prev.filter(s => s.id !== updated.id);
         return [updated, ...next];
       }
-      // same status — preserve position
       const next = [...prev];
       next[idx] = updated;
       return next;
     });
-    setSelected(updated);
+    // Do NOT call setSelected here - ShowDetail manages its own optimistic state.
+    // Calling setSelected would re-trigger the initialShow sync effect and overwrite
+    // in-flight optimistic updates, breaking checkbox toggles.
   };
 
   const handleReorder = useCallback((reordered: TrackedShow[]) => {
@@ -619,6 +621,7 @@ export function Dashboard() {
                   show={selected}
                   onClose={handleCloseModal}
                   onUpdate={handleUpdate}
+                  onBeforeWrite={handleBeforeWrite}
                   onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
               />
           )}
@@ -730,6 +733,7 @@ export function Dashboard() {
                   show={selected}
                   onClose={handleCloseModal}
                   onUpdate={handleUpdate}
+                  onBeforeWrite={handleBeforeWrite}
                   onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
               />
           )}
@@ -841,6 +845,7 @@ export function Dashboard() {
                 show={selected}
                 onClose={handleCloseModal}
                 onUpdate={handleUpdate}
+                onBeforeWrite={handleBeforeWrite}
                 onUntrack={currentUser ? () => handleDelete(selected.id) : undefined}
             />
         )}
