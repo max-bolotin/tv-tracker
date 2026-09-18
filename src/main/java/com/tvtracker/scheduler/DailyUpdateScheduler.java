@@ -173,10 +173,18 @@ public class DailyUpdateScheduler {
         }
       }
 
+      // Build per-user show lists from the in-memory showMap (which has all updates applied)
+      Map<String, List<TrackedShow>> userShowsMap = new LinkedHashMap<>();
+      for (var refs : showMap.values()) {
+        for (var ref : refs) {
+          userShowsMap.computeIfAbsent(ref.getKey(), k -> new ArrayList<>()).add(ref.getValue());
+        }
+      }
+
       // Persist modified user files
       for (String userId : modifiedUsers) {
         try {
-          var shows = storage.loadAll(userId);
+          var shows = userShowsMap.getOrDefault(userId, List.of());
           storage.saveAll(userId, shows);
           log.info("Scheduled daily update: persisted updated file for user {} ({} shows)", userId,
               shows.size());
@@ -252,8 +260,15 @@ public class DailyUpdateScheduler {
               rep.ratingLastFetched = java.time.LocalDate.now().toString();
               rep.ratingsUpdatedAt = rep.ratingLastFetched;
 
-              // mark all users containing this show as modified
+              // propagate ratings to all other user copies of the same show
               for (var ref : refs) {
+                TrackedShow copy = ref.getValue();
+                if (copy != rep) {
+                  copy.imdbRating = rep.imdbRating;
+                  copy.rtRating = rep.rtRating;
+                  copy.ratingLastFetched = rep.ratingLastFetched;
+                  copy.ratingsUpdatedAt = rep.ratingsUpdatedAt;
+                }
                 modifiedUsers.add(ref.getKey());
               }
 
@@ -277,7 +292,7 @@ public class DailyUpdateScheduler {
           // Persist any user files modified by OMDb pass
           for (String userId : new HashSet<>(modifiedUsers)) {
             try {
-              var shows = storage.loadAll(userId);
+              var shows = userShowsMap.getOrDefault(userId, List.of());
               storage.saveAll(userId, shows);
               log.info("OMDb enrichment: persisted updated file for user {} ({} shows)", userId,
                   shows.size());
