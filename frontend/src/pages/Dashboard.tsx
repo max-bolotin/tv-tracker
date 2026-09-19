@@ -172,8 +172,10 @@ export function Dashboard() {
       const rows = Math.max(rowsNeeded, currentRows);
       const limit = rows * cols;
       setPopularRows(rows);
-      api.getPopular(limit).then(shows => {
+      // Request one extra row so we always have enough to fill the last row completely
+      api.getPopular(limit + cols).then(shows => {
         const unique = dedupeShows(shows);
+        // Trim to exactly `limit` (full rows)
         setPopularShows(unique.slice(0, limit));
       }).catch(() => setPopularShows([]));
     }
@@ -606,9 +608,8 @@ export function Dashboard() {
               const nextRows = Math.max(1, popularRows) + 1;
               const nextLimit = nextRows * cols;
               setPopularRows(nextRows);
-              api.getPopular(nextLimit).then(shows => {
+              api.getPopular(nextLimit + cols).then(shows => {
                 const unique = dedupeShows(shows);
-                // pad to fill the last row completely
                 setPopularShows(unique.slice(0, nextLimit));
               }).catch(() => setPopularShows([]));
             }}>Explore more

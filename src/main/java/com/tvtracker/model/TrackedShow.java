@@ -27,6 +27,45 @@ public class TrackedShow {
 
     public TrackedShow() {}
 
+    /** Shallow-copies metadata fields; does NOT copy id/watchStatus/personalRating (caller sets those). */
+    public TrackedShow metaCopy() {
+        TrackedShow c = new TrackedShow();
+        c.tmdbId = this.tmdbId;
+        c.tvmazeId = this.tvmazeId;
+        c.imdbId = this.imdbId;
+        c.title = this.title;
+        c.firstAirYear = this.firstAirYear;
+        c.posterPath = this.posterPath;
+        c.overview = this.overview;
+        c.totalSeasons = this.totalSeasons;
+        c.productionStatus = this.productionStatus;
+        c.watchStatus = this.watchStatus;
+        c.imdbRating = this.imdbRating;
+        c.rtRating = this.rtRating;
+        c.ratingsUpdatedAt = this.ratingsUpdatedAt;
+        c.ratingLastFetched = this.ratingLastFetched;
+        c.cast = this.cast == null ? new ArrayList<>() : new ArrayList<>(this.cast);
+        c.seasons = new ArrayList<>();
+        if (this.seasons != null) {
+            for (Season s : this.seasons) {
+                Season sc = new Season(s.number);
+                sc.imdbRating = s.imdbRating;
+                sc.rtRating = s.rtRating;
+                sc.ratingsUpdatedAt = s.ratingsUpdatedAt;
+                sc.episodes = new ArrayList<>();
+                if (s.episodes != null) {
+                    for (Episode e : s.episodes) {
+                        Episode ec = new Episode(e.number, e.name, e.airDate);
+                        ec.watched = e.watched;
+                        sc.episodes.add(ec);
+                    }
+                }
+                c.seasons.add(sc);
+            }
+        }
+        return c;
+    }
+
     // --- Tier recalculation logic ---
     public void recalculateStatus() {
         if (watchStatus == WatchStatus.DROPPED) return;
