@@ -174,7 +174,7 @@ export function Dashboard() {
       setPopularRows(rows);
       api.getPopular(limit).then(shows => {
         const unique = dedupeShows(shows);
-        setPopularShows(unique);
+        setPopularShows(unique.slice(0, limit));
       }).catch(() => setPopularShows([]));
     }
 
@@ -608,7 +608,8 @@ export function Dashboard() {
               setPopularRows(nextRows);
               api.getPopular(nextLimit).then(shows => {
                 const unique = dedupeShows(shows);
-                setPopularShows(unique);
+                // pad to fill the last row completely
+                setPopularShows(unique.slice(0, nextLimit));
               }).catch(() => setPopularShows([]));
             }}>Explore more
             </button>

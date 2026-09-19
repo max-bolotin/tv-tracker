@@ -73,6 +73,12 @@ public class ShowController {
   @PostMapping
   public TrackedShow addShow(@RequestBody AddShowRequest req) throws IOException {
     String userId = CurrentUserContext.currentUserId();
+    // Dedup: if already tracked by tmdbId or tvmazeId, return existing show
+    List<TrackedShow> existing = storage.loadAll(userId);
+    for (TrackedShow s : existing) {
+      if (req.tmdbId() != null && req.tmdbId().equals(s.tmdbId)) return s;
+      if (req.tvmazeId() != null && req.tvmazeId().equals(s.tvmazeId)) return s;
+    }
     TrackedShow show = metadata.fetchDetails(req.tmdbId(), req.tvmazeId());
     show.id = UUID.randomUUID().toString();
     show.watchStatus = WatchStatus.NOT_WATCHED;
@@ -184,11 +190,23 @@ public class ShowController {
     return ResponseEntity.noContent().build();
   }
 
+  private static final long REFRESH_COOLDOWN_MS = 60 * 60 * 1000L; // 1 hour
+  // showId -> last refresh timestamp
+  private final java.util.concurrent.ConcurrentHashMap<String, Long> lastRefreshed = new java.util.concurrent.ConcurrentHashMap<>();
+
   @PostMapping("/{id}/refresh")
   public TrackedShow refreshShow(@PathVariable String id) throws IOException {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow existing = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
+
+    // Return cached version if refreshed recently
+    long now = System.currentTimeMillis();
+    Long last = lastRefreshed.get(id);
+    if (last != null && (now - last) < REFRESH_COOLDOWN_MS) {
+      log.debug("refreshShow: skipping refresh for '{}' (refreshed {}s ago)", existing.title, (now - last) / 1000);
+      return existing;
+    }
     if (existing.tmdbId == null) {
       metadata.hydrateMissingTmdbId(existing);
     }
@@ -196,6 +214,9 @@ public class ShowController {
     fresh.id = existing.id;
     fresh.watchStatus = existing.watchStatus;
     fresh.personalRating = existing.personalRating;
+    if (fresh.firstAirYear == null && existing.firstAirYear != null) {
+      fresh.firstAirYear = existing.firstAirYear;
+    }
     if (fresh.cast == null) {
       fresh.cast = existing.cast != null ? existing.cast : new ArrayList<>();
     } else if (fresh.cast.isEmpty() && existing.cast != null && !existing.cast.isEmpty()) {
@@ -247,6 +268,7 @@ public class ShowController {
     }
     boolean statusChanged = fresh.watchStatus != existing.watchStatus;
     TrackedShow saved = storage.save(userId, fresh, statusChanged);
+    lastRefreshed.put(id, System.currentTimeMillis());
     log.debug("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
     return saved;
   }
