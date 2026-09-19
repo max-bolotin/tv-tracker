@@ -121,7 +121,7 @@ public class MetadataService {
       CachedShow cached = detailsCache.get(cacheKey);
       if (cached != null && !cached.isExpired()) {
         log.debug("fetchDetails: cache hit for key={}", cacheKey);
-        return cached.show();
+        return cached.show().metaCopy(); // return a copy so callers can't mutate the cached entry
       }
     }
 
@@ -273,21 +273,34 @@ public class MetadataService {
       log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}",
           merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
       if (enrichRatingsFlag) enrichRatings(merged);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(merged, System.currentTimeMillis()));
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(merged.metaCopy(), System.currentTimeMillis()));
       return merged;
     }
 
     if (fromTmdb != null) {
+      filterZeroSeasonsAndEpisodes(fromTmdb);
       if (enrichRatingsFlag) enrichRatings(fromTmdb);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTmdb, System.currentTimeMillis()));
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTmdb.metaCopy(), System.currentTimeMillis()));
       return fromTmdb;
     }
     if (fromTvmaze != null) {
+      filterZeroSeasonsAndEpisodes(fromTvmaze);
       if (enrichRatingsFlag) enrichRatings(fromTvmaze);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTvmaze, System.currentTimeMillis()));
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTvmaze.metaCopy(), System.currentTimeMillis()));
       return fromTvmaze;
     }
     throw new IllegalArgumentException("No valid external ID provided");
+  }
+
+  /** Removes season 0 and episode 0 entries from a show (in-place). */
+  private void filterZeroSeasonsAndEpisodes(TrackedShow show) {
+    if (show.seasons == null) return;
+    show.seasons.removeIf(s -> s.number == 0);
+    for (var s : show.seasons) {
+      if (s.episodes != null) s.episodes.removeIf(e -> e.number == 0);
+    }
+    show.seasons.removeIf(s -> s.episodes == null || s.episodes.isEmpty());
+    show.totalSeasons = show.seasons.size();
   }
 
   /**
