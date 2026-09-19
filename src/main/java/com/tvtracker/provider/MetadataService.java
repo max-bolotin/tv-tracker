@@ -4,8 +4,10 @@ import com.tvtracker.model.Season;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,16 @@ public class MetadataService {
   private final TmdbProvider tmdb;
   private final TvMazeProvider tvmaze;
   private final OmdbProvider omdb;
+
+  // Short-lived in-memory cache for fetchDetails (keyed by "tmdb:ID" or "tvmaze:ID").
+  // Entries expire after CACHE_TTL_MS. Used to avoid redundant API calls when the user
+  // opens the same search preview or popular card multiple times in one session.
+  private static final long CACHE_TTL_MS = 60 * 60 * 1000L; // 1 hour
+  private final Map<String, CachedShow> detailsCache = new ConcurrentHashMap<>();
+
+  private record CachedShow(TrackedShow show, long fetchedAt) {
+    boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CACHE_TTL_MS; }
+  }
 
   public MetadataService(TmdbProvider tmdb, TvMazeProvider tvmaze, OmdbProvider omdb) {
     this.tmdb = tmdb;
@@ -47,27 +59,35 @@ public class MetadataService {
     try {
       List<ShowSearchResult> hits = search(show.title);
       ShowSearchResult match = null;
+      // 1. Exact tvmazeId match
       if (show.tvmazeId != null) {
         match = hits.stream()
             .filter(h -> h.tvmazeId != null && h.tvmazeId.equals(show.tvmazeId))
-            .findFirst()
-            .orElse(null);
+            .findFirst().orElse(null);
       }
+      // 2. imdbId match
       if (match == null && show.imdbId != null) {
         match = hits.stream()
             .filter(h -> h.imdbId != null && h.imdbId.equals(show.imdbId))
-            .findFirst()
-            .orElse(null);
+            .findFirst().orElse(null);
       }
+      // 3. Title + year match (most reliable for disambiguation like Perry Mason 1957 vs 2020)
+      if (match == null && show.firstAirYear != null) {
+        match = hits.stream()
+            .filter(h -> h.title != null && h.title.equalsIgnoreCase(show.title)
+                && show.firstAirYear.equals(h.firstAirYear))
+            .findFirst().orElse(null);
+      }
+      // 4. Title-only match (last resort)
       if (match == null) {
         match = hits.stream()
             .filter(h -> h.title != null && h.title.equalsIgnoreCase(show.title))
-            .findFirst()
-            .orElse(null);
+            .findFirst().orElse(null);
       }
       if (match != null && match.tmdbId != null) {
         show.tmdbId = match.tmdbId;
-        log.debug("hydrateMissingTmdbId: resolved tmdbId={} for show='{}' from title search", show.tmdbId, show.title);
+        log.debug("hydrateMissingTmdbId: resolved tmdbId={} for show='{}' (year={}) from title search",
+            show.tmdbId, show.title, show.firstAirYear);
       }
     } catch (Exception e) {
       log.warn("hydrateMissingTmdbId failed for show='{}': {}", show.title, e.getMessage());
@@ -94,6 +114,16 @@ public class MetadataService {
   public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatingsFlag) {
     log.debug("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
         tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
+
+    // Cache lookup (skip for scheduler bulk runs where enrichRatingsFlag=false)
+    String cacheKey = tmdbId != null ? "tmdb:" + tmdbId : (tvmazeId != null ? "tvmaze:" + tvmazeId : null);
+    if (enrichRatingsFlag && cacheKey != null) {
+      CachedShow cached = detailsCache.get(cacheKey);
+      if (cached != null && !cached.isExpired()) {
+        log.debug("fetchDetails: cache hit for key={}", cacheKey);
+        return cached.show();
+      }
+    }
 
     CompletableFuture<TrackedShow> fTmdb;
     CompletableFuture<TrackedShow> fTvmaze;
@@ -243,11 +273,20 @@ public class MetadataService {
       log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}",
           merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
       if (enrichRatingsFlag) enrichRatings(merged);
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(merged, System.currentTimeMillis()));
       return merged;
     }
 
-    if (fromTmdb != null) { if (enrichRatingsFlag) enrichRatings(fromTmdb); return fromTmdb; }
-    if (fromTvmaze != null) { if (enrichRatingsFlag) enrichRatings(fromTvmaze); return fromTvmaze; }
+    if (fromTmdb != null) {
+      if (enrichRatingsFlag) enrichRatings(fromTmdb);
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTmdb, System.currentTimeMillis()));
+      return fromTmdb;
+    }
+    if (fromTvmaze != null) {
+      if (enrichRatingsFlag) enrichRatings(fromTvmaze);
+      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTvmaze, System.currentTimeMillis()));
+      return fromTvmaze;
+    }
     throw new IllegalArgumentException("No valid external ID provided");
   }
 

@@ -11,6 +11,7 @@ public class TrackedShow {
     public Long tvmazeId;
     public String imdbId;
     public String title;
+    public Integer firstAirYear; // e.g. 2020, used for disambiguation
     public String posterPath;   // relative path or full URL
     public String overview;
     public int totalSeasons;

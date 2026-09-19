@@ -9,6 +9,7 @@ public class ShowSearchResult {
     public Long tvmazeId;
     public String imdbId;
     public String title;
+    public Integer firstAirYear;
     public String posterPath;
     public String overview;
     public int totalSeasons;

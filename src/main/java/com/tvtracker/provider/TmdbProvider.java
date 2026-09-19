@@ -63,6 +63,10 @@ public class TmdbProvider implements MetadataProvider {
                 r.overview = item.path("overview").asText();
                 String poster = item.path("poster_path").asText(null);
                 r.posterPath = poster != null ? imageBaseUrl + poster : null;
+                String firstAir = item.path("first_air_date").asText(null);
+                if (firstAir != null && firstAir.length() >= 4) {
+                    try { r.firstAirYear = Integer.parseInt(firstAir.substring(0, 4)); } catch (Exception ignored) {}
+                }
                 results.add(r);
             }
             return results;
@@ -83,6 +87,10 @@ public class TmdbProvider implements MetadataProvider {
             show.tmdbId = tmdbId;
             show.title = root.path("name").asText();
             show.overview = root.path("overview").asText();
+            String firstAir = root.path("first_air_date").asText(null);
+            if (firstAir != null && firstAir.length() >= 4) {
+                try { show.firstAirYear = Integer.parseInt(firstAir.substring(0, 4)); } catch (Exception ignored) {}
+            }
             // Prefer to enumerate seasons from the 'seasons' array so we include any season entries
             JsonNode seasonsArr = root.path("seasons");
             String poster = root.path("poster_path").asText(null);
