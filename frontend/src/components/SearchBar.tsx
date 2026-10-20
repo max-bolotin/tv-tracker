@@ -1,28 +1,48 @@
-import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import type { ShowSearchResult } from '../types';
 import { api } from '../api/client';
 
 interface Props {
   onAdd: (result: ShowSearchResult) => void;
   onPreview: (result: ShowSearchResult) => void;
+  onResultsOpenChange?: (isOpen: boolean) => void;
 }
 
 export interface SearchBarHandle {
   triggerSearch: (query: string) => void;
 }
 
-export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({ onAdd, onPreview }, ref) {
+export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
+  { onAdd, onPreview, onResultsOpenChange },
+  ref,
+) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ShowSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsOpenRef = useRef(false);
+
+  const setResultsOpen = useCallback((isOpen: boolean) => {
+    resultsOpenRef.current = isOpen;
+    onResultsOpenChange?.(isOpen);
+  }, [onResultsOpenChange]);
 
   const search = async (q = query) => {
     if (!q.trim()) return;
     setLoading(true);
     try {
-      setResults(await api.searchShows(q));
+      const nextResults = await api.searchShows(q);
+      setResults(nextResults);
+      if (nextResults.length > 0 && !resultsOpenRef.current) {
+        const currentState = history.state;
+        const state = currentState && typeof currentState === 'object' ? currentState : {};
+        history.pushState({ ...state, searchModal: true }, '');
+        setResultsOpen(true);
+      } else if (nextResults.length === 0 && resultsOpenRef.current) {
+        if (history.state?.searchModal) history.back();
+        else setResultsOpen(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -37,10 +57,30 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
     },
   }));
 
-  const dismiss = () => setResults([]);
+  const closeResults = () => {
+    setResults([]);
+    setResultsOpen(false);
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (resultsOpenRef.current) {
+        setResults([]);
+        setResultsOpen(false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [setResultsOpen]);
+
+  const dismiss = () => {
+    if (resultsOpenRef.current && history.state?.searchModal) history.back();
+    else closeResults();
+  };
+
   const clearQuery = () => {
     setQuery('');
-    setResults([]);
+    dismiss();
     inputRef.current?.focus();
   };
 
@@ -81,7 +121,7 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
           <div className="search-backdrop" onClick={dismiss} />
           <ul className="search-results">
             {results.map(r => (
-              <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { dismiss(); onPreview(r); }}>
+              <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { closeResults(); onPreview(r); }}>
                 {r.posterPath && <img src={r.posterPath} alt={r.title} />}
                 <div>
                   <strong>{r.title}</strong>

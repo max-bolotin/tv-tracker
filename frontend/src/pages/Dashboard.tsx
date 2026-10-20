@@ -54,6 +54,7 @@ export function Dashboard() {
   const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
+  const searchResultsOpen = useRef(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
@@ -205,7 +206,8 @@ export function Dashboard() {
   // Push a history entry when a modal opens, pop it to close on back gesture/button
   const openModal = useCallback((open: () => void) => {
     open();
-    history.pushState({modal: true}, '');
+    if (history.state?.searchModal) history.replaceState({modal: true}, '');
+    else history.pushState({modal: true}, '');
   }, []);
 
   const closeAll = useCallback(() => {
@@ -476,6 +478,10 @@ export function Dashboard() {
   // Back button handler
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
+      if (searchResultsOpen.current) {
+        searchResultsOpen.current = false;
+        return;
+      }
       if (selected || preview) { closeAll(); return; }
       if (e.state?.myShows) {
         // landed on myShows entry — nothing to do, tab state is already correct
@@ -488,8 +494,8 @@ export function Dashboard() {
         // (browser already popped to popular root, so we just stay here)
       }
     };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    window.addEventListener('popstate', onPop, true);
+    return () => window.removeEventListener('popstate', onPop, true);
   }, [selected, preview, switchTab, closeAll]);
 
   // Swipe: only active when touch starts inside the grid, not in modal or tabs row
@@ -578,7 +584,12 @@ export function Dashboard() {
             </nav>
           </header>
 
-          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+          <SearchBar
+            ref={searchBarRef}
+            onAdd={handleAdd}
+            onPreview={handlePreview}
+            onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+          />
 
           <div className="tabs">
             {TABS.map(t => (
@@ -700,7 +711,12 @@ export function Dashboard() {
             </nav>
           </header>
 
-          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+          <SearchBar
+            ref={searchBarRef}
+            onAdd={handleAdd}
+            onPreview={handlePreview}
+            onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+          />
 
           <div className="tabs">
             {TABS.map(t => (
@@ -816,7 +832,12 @@ export function Dashboard() {
           </nav>
         </header>
 
-        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+        <SearchBar
+          ref={searchBarRef}
+          onAdd={handleAdd}
+          onPreview={handlePreview}
+          onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+        />
 
         <div className="tabs">
           {TABS.map(t => (
