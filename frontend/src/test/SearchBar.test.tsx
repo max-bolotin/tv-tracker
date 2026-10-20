@@ -44,4 +44,21 @@ describe('SearchBar', () => {
     });
     expect(onResultsOpenChange).toHaveBeenLastCalledWith(false);
   });
+
+  it('shows the clear button only for a non-empty query and clears/refocuses the input', () => {
+    render(<SearchBar onAdd={vi.fn()} onPreview={vi.fn()} />);
+    const input = screen.getByPlaceholderText('Search for a TV show...');
+
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'Example' } });
+    const clearButton = screen.getByRole('button', { name: 'Clear search' });
+    expect(clearButton).toBeInTheDocument();
+
+    fireEvent.click(clearButton);
+
+    expect(input).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+  });
 });
