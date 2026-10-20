@@ -8,6 +8,7 @@ import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class MovieEntry {
+    public String id;
     public Long tmdbId;
     public MediaType mediaType = MediaType.MOVIE;
     public String imdbId;

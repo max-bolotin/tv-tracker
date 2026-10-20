@@ -29,9 +29,17 @@ public class SseController {
     }
 
     public void broadcast() {
+        broadcast("data-changed");
+    }
+
+    public void broadcastMoviesChanged() {
+        broadcast("movies-changed");
+    }
+
+    private void broadcast(String eventName) {
         for (SseEmitter client : clients) {
             try {
-                client.send(SseEmitter.event().name("data-changed").data(""));
+                client.send(SseEmitter.event().name(eventName).data(""));
             } catch (Exception e) {
                 clients.remove(client);
                 // dead connection — browser navigated away, not an error
