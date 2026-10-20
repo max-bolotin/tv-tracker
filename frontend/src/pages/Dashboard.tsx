@@ -8,6 +8,8 @@ import {SearchBar, type SearchBarHandle} from '../components/SearchBar';
 import {SearchPreview} from '../components/SearchPreview';
 import {ScrollToTop} from '../components/ScrollToTop';
 import {RefreshButton} from '../components/RefreshButton';
+import {ThemeSwitcher} from '../components/ThemeSwitcher';
+import {useMobileMenu} from '../hooks/useMobileMenu';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -53,6 +55,7 @@ export function Dashboard() {
   const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
+  const searchResultsOpen = useRef(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
@@ -60,7 +63,7 @@ export function Dashboard() {
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
   const silentRefreshes = useRef(new Set<string>());
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {isOpen: menuOpen, openMenu: openMobileMenu, closeMenu: closeMobileMenu} = useMobileMenu();
   const [slideDir, setSlideDir] = useState<'left'|'right'|null>(null);
   const slideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
@@ -204,7 +207,8 @@ export function Dashboard() {
   // Push a history entry when a modal opens, pop it to close on back gesture/button
   const openModal = useCallback((open: () => void) => {
     open();
-    history.pushState({modal: true}, '');
+    if (history.state?.searchModal) history.replaceState({modal: true}, '');
+    else history.pushState({modal: true}, '');
   }, []);
 
   const closeAll = useCallback(() => {
@@ -475,6 +479,10 @@ export function Dashboard() {
   // Back button handler
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
+      if (searchResultsOpen.current) {
+        searchResultsOpen.current = false;
+        return;
+      }
       if (selected || preview) { closeAll(); return; }
       if (e.state?.myShows) {
         // landed on myShows entry — nothing to do, tab state is already correct
@@ -487,8 +495,8 @@ export function Dashboard() {
         // (browser already popped to popular root, so we just stay here)
       }
     };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    window.addEventListener('popstate', onPop, true);
+    return () => window.removeEventListener('popstate', onPop, true);
   }, [selected, preview, switchTab, closeAll]);
 
   // Swipe: only active when touch starts inside the grid, not in modal or tabs row
@@ -536,6 +544,7 @@ export function Dashboard() {
               <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                      onChange={handleImport}/>
               <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+              <ThemeSwitcher/>
               {currentUser ? (
                   <>
                     <div className="user-pill">
@@ -554,20 +563,21 @@ export function Dashboard() {
                   <button onClick={() => handleSignIn()}>Sign in with Google</button>
               )}
               {/* Mobile hamburger */}
-              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+              <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
                   <>
-                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                     <div className="mobile-menu">
-                      <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
-                      <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
-                      <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                      <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
+                      <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
+                      <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
+                      <ThemeSwitcher/>
                       {currentUser ? (
-                          <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                          <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                       ) : (
-                          <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                          <button onClick={() => { closeMobileMenu(); handleSignIn(); }}>Sign in</button>
                       )}
                     </div>
                   </>
@@ -575,7 +585,12 @@ export function Dashboard() {
             </nav>
           </header>
 
-          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+          <SearchBar
+            ref={searchBarRef}
+            onAdd={handleAdd}
+            onPreview={handlePreview}
+            onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+          />
 
           <div className="tabs">
             {TABS.map(t => (
@@ -681,21 +696,28 @@ export function Dashboard() {
             <h1>📺 TV Tracker</h1>
             <nav className="header-nav">
               <button onClick={() => handleSignIn()}>Sign in with Google</button>
-              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+              <ThemeSwitcher/>
+              <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
                   <>
-                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                     <div className="mobile-menu">
-                      <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                      <button onClick={() => { closeMobileMenu(); handleSignIn(); }}>Sign in</button>
+                      <ThemeSwitcher/>
                     </div>
                   </>
               )}
             </nav>
           </header>
 
-          <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+          <SearchBar
+            ref={searchBarRef}
+            onAdd={handleAdd}
+            onPreview={handlePreview}
+            onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+          />
 
           <div className="tabs">
             {TABS.map(t => (
@@ -782,6 +804,7 @@ export function Dashboard() {
             <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                    onChange={handleImport}/>
             <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+            <ThemeSwitcher/>
             <div className="user-pill">
               {currentUser.picture ? (
                   <img src={currentUser.picture} alt={currentUser.name} className="user-avatar"/>
@@ -792,24 +815,30 @@ export function Dashboard() {
               <span className="user-name">{currentUser.name}</span>
             </div>
             <button onClick={handleSignOut}>Log out</button>
-            <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+            <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                     aria-label="Open menu">☰
             </button>
             {menuOpen && (
                 <>
-                  <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                  <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                   <div className="mobile-menu">
-                    <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
-                    <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
-                    <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
-                    <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                    <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
+                    <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
+                    <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
+                    <ThemeSwitcher/>
+                    <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                   </div>
                 </>
             )}
           </nav>
         </header>
 
-        <SearchBar ref={searchBarRef} onAdd={handleAdd} onPreview={handlePreview}/>
+        <SearchBar
+          ref={searchBarRef}
+          onAdd={handleAdd}
+          onPreview={handlePreview}
+          onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+        />
 
         <div className="tabs">
           {TABS.map(t => (
