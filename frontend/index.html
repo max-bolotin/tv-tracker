@@ -5,6 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TV Tracker</title>
+    <script>
+      // Prevent theme flash: apply saved theme before React renders
+      (function() {
+        try {
+          const savedTheme = localStorage.getItem('theme');
+          if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+          } else {
+            // Use system preference as initial default
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (prefersDark) {
+              document.documentElement.setAttribute('data-theme', 'dark');
+            }
+          }
+        } catch (e) {
+          // Ignore errors (e.g., localStorage disabled)
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

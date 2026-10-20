@@ -8,6 +8,7 @@ import {SearchBar, type SearchBarHandle} from '../components/SearchBar';
 import {SearchPreview} from '../components/SearchPreview';
 import {ScrollToTop} from '../components/ScrollToTop';
 import {RefreshButton} from '../components/RefreshButton';
+import {ThemeSwitcher} from '../components/ThemeSwitcher';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -536,6 +537,7 @@ export function Dashboard() {
               <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                      onChange={handleImport}/>
               <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+              <ThemeSwitcher/>
               {currentUser ? (
                   <>
                     <div className="user-pill">
@@ -564,6 +566,7 @@ export function Dashboard() {
                       <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
                       <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
                       <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                      <ThemeSwitcher/>
                       {currentUser ? (
                           <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
                       ) : (
@@ -681,6 +684,7 @@ export function Dashboard() {
             <h1>📺 TV Tracker</h1>
             <nav className="header-nav">
               <button onClick={() => handleSignIn()}>Sign in with Google</button>
+              <ThemeSwitcher/>
               <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
                       aria-label="Open menu">☰
               </button>
@@ -689,6 +693,7 @@ export function Dashboard() {
                     <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
                     <div className="mobile-menu">
                       <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                      <ThemeSwitcher/>
                     </div>
                   </>
               )}
@@ -782,6 +787,7 @@ export function Dashboard() {
             <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                    onChange={handleImport}/>
             <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
+            <ThemeSwitcher/>
             <div className="user-pill">
               {currentUser.picture ? (
                   <img src={currentUser.picture} alt={currentUser.name} className="user-avatar"/>
@@ -802,6 +808,7 @@ export function Dashboard() {
                     <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
                     <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
                     <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                    <ThemeSwitcher/>
                     <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
                   </div>
                 </>

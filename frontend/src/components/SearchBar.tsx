@@ -38,6 +38,11 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
   }));
 
   const dismiss = () => setResults([]);
+  const clearQuery = () => {
+    setQuery('');
+    setResults([]);
+    inputRef.current?.focus();
+  };
 
   return (
     <div className="search-bar" ref={containerRef}>
@@ -52,6 +57,16 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar({
           }}
           placeholder="Search for a TV show..."
         />
+        {query && (
+          <button
+            className="search-clear-btn"
+            onClick={clearQuery}
+            type="button"
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
         <button onClick={() => search()} disabled={loading}>
           {loading ? '...' : 'Search'}
         </button>
