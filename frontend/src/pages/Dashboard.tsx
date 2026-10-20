@@ -9,6 +9,7 @@ import {SearchPreview} from '../components/SearchPreview';
 import {ScrollToTop} from '../components/ScrollToTop';
 import {RefreshButton} from '../components/RefreshButton';
 import {ThemeSwitcher} from '../components/ThemeSwitcher';
+import {useMobileMenu} from '../hooks/useMobileMenu';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -62,7 +63,7 @@ export function Dashboard() {
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
   const silentRefreshes = useRef(new Set<string>());
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {isOpen: menuOpen, openMenu: openMobileMenu, closeMenu: closeMobileMenu} = useMobileMenu();
   const [slideDir, setSlideDir] = useState<'left'|'right'|null>(null);
   const slideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
@@ -562,21 +563,21 @@ export function Dashboard() {
                   <button onClick={() => handleSignIn()}>Sign in with Google</button>
               )}
               {/* Mobile hamburger */}
-              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+              <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
                   <>
-                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                     <div className="mobile-menu">
-                      <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
-                      <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
-                      <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                      <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
+                      <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
+                      <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
                       <ThemeSwitcher/>
                       {currentUser ? (
-                          <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                          <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                       ) : (
-                          <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                          <button onClick={() => { closeMobileMenu(); handleSignIn(); }}>Sign in</button>
                       )}
                     </div>
                   </>
@@ -696,14 +697,14 @@ export function Dashboard() {
             <nav className="header-nav">
               <button onClick={() => handleSignIn()}>Sign in with Google</button>
               <ThemeSwitcher/>
-              <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+              <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                       aria-label="Open menu">☰
               </button>
               {menuOpen && (
                   <>
-                    <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                    <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                     <div className="mobile-menu">
-                      <button onClick={() => { setMenuOpen(false); handleSignIn(); }}>Sign in</button>
+                      <button onClick={() => { closeMobileMenu(); handleSignIn(); }}>Sign in</button>
                       <ThemeSwitcher/>
                     </div>
                   </>
@@ -814,18 +815,18 @@ export function Dashboard() {
               <span className="user-name">{currentUser.name}</span>
             </div>
             <button onClick={handleSignOut}>Log out</button>
-            <button className="hamburger" onClick={() => setMenuOpen(o => !o)}
+            <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
                     aria-label="Open menu">☰
             </button>
             {menuOpen && (
                 <>
-                  <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)}/>
+                  <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                   <div className="mobile-menu">
-                    <button onClick={() => { setMenuOpen(false); handleExport(); }}>Export</button>
-                    <button onClick={() => { setMenuOpen(false); importRef.current?.click(); }}>Import</button>
-                    <button onClick={() => { setMenuOpen(false); api.getShows().then(setAllShows); }}>Refresh</button>
+                    <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
+                    <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
+                    <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
                     <ThemeSwitcher/>
-                    <button onClick={() => { setMenuOpen(false); handleSignOut(); }}>Log out</button>
+                    <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                   </div>
                 </>
             )}
