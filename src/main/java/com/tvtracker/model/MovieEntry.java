@@ -14,6 +14,7 @@ public class MovieEntry {
     public MediaType mediaType = MediaType.MOVIE;
     public String imdbId;
     public String title;
+    public String overview;
     public String releaseDate;
     public Integer runtime;
     public String poster;

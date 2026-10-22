@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, useMemo, useCallback} from 'react';
-import type {TrackedShow, WatchStatus, CurrentUser, MovieEntry, MovieSearchResult} from '../types';
+import type {TrackedShow, WatchStatus, CurrentUser, MovieEntry, MoviePreview, MovieSearchResult} from '../types';
 import type {ShowSearchResult} from '../types';
 import {api} from '../api/client';
 import {DraggableGrid} from '../components/DraggableGrid';
@@ -60,7 +60,7 @@ export function Dashboard() {
   const [popularRows, setPopularRows] = useState(0); // number of rows currently requested
   const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
-  const [selectedMovie, setSelectedMovie] = useState<MovieEntry | null>(null);
+  const [selectedMovie, setSelectedMovie] = useState<MovieEntry | MoviePreview | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
   const searchResultsOpen = useRef(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -70,6 +70,7 @@ export function Dashboard() {
   const reorderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const localWrites = useRef(0);
   const silentRefreshes = useRef(new Set<string>());
+  const movieDetailsLoading = useRef(new Set<string>());
   const {isOpen: menuOpen, openMenu: openMobileMenu, closeMenu: closeMobileMenu} = useMobileMenu();
   const [slideDir, setSlideDir] = useState<'left'|'right'|null>(null);
   const slideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -316,24 +317,73 @@ export function Dashboard() {
     }
   };
 
-  const handleAddMovie = async (result: MovieSearchResult) => {
+  const handleTrackMovie = async (result: MovieSearchResult): Promise<MovieEntry | undefined> => {
     if (!currentUser) {
       setAuthMoviePromptPayload(result);
-      return;
+      return undefined;
     }
     try {
       const added = await api.addMovie(result.tmdbId);
       setMovies(prev => prev.some(movie => movie.id === added.movie.id)
-        ? prev
+        ? prev.map(movie => movie.id === added.movie.id ? added.movie : movie)
         : [added.movie, ...prev]);
+      return added.movie;
     } catch (error) {
       console.error('Failed to add movie', error);
       setImportToast('Failed to add movie. Please try again.');
+      return undefined;
+    }
+  };
+
+  const handleAddMovie = async (result: MovieSearchResult) => {
+    await handleTrackMovie(result);
+  };
+
+  const handlePreviewMovie = async (result: MovieSearchResult) => {
+    const trackedMovie = movies.find(movie => movie.tmdbId === result.tmdbId);
+    if (trackedMovie) {
+      openModal(() => setSelectedMovie(trackedMovie));
+      return;
+    }
+    try {
+      const details = await api.getMovieDetails(result.tmdbId);
+      openModal(() => setSelectedMovie(details));
+    } catch (error) {
+      console.error('Failed to load movie details', error);
+      setImportToast('Could not load movie details. Please try again.');
     }
   };
 
   const handleSelectMovie = (movie: MovieEntry) => {
     openModal(() => setSelectedMovie(movie));
+    if ((movie.overview && movie.cast?.length) || movieDetailsLoading.current.has(movie.id)) return;
+
+    movieDetailsLoading.current.add(movie.id);
+    api.getMovieDetails(movie.tmdbId)
+      .then(details => {
+        const mergeDetails = (current: MovieEntry): MovieEntry => ({
+          ...current,
+          overview: current.overview ?? details.overview,
+          cast: current.cast?.length ? current.cast : details.cast,
+          poster: current.poster ?? details.poster,
+          imdbId: current.imdbId ?? details.imdbId,
+        });
+        setMovies(previous => previous.map(entry => entry.id === movie.id ? mergeDetails(entry) : entry));
+        setSelectedMovie(previous => {
+          if (!previous || previous.id !== movie.id) return previous;
+          return {
+            ...previous,
+            overview: previous.overview ?? details.overview,
+            cast: previous.cast?.length ? previous.cast : details.cast,
+            poster: previous.poster ?? details.poster,
+            imdbId: previous.imdbId ?? details.imdbId,
+          };
+        });
+      })
+      .catch(error => {
+        console.error(`Failed to load missing details for ${movie.title}`, error);
+      })
+      .finally(() => movieDetailsLoading.current.delete(movie.id));
   };
 
   const handleMovieUpdate = (updated: MovieEntry) => {
@@ -723,6 +773,7 @@ export function Dashboard() {
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
             mode={tab === 'MOVIES' ? 'movies' : 'shows'}
             onAddMovie={handleAddMovie}
+            onPreviewMovie={handlePreviewMovie}
             trackedMovies={movies}
           />
 
@@ -853,6 +904,7 @@ export function Dashboard() {
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
             mode={tab === 'MOVIES' ? 'movies' : 'shows'}
             onAddMovie={handleAddMovie}
+            onPreviewMovie={handlePreviewMovie}
             trackedMovies={movies}
           />
 
@@ -977,6 +1029,7 @@ export function Dashboard() {
           onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
           mode={tab === 'MOVIES' ? 'movies' : 'shows'}
           onAddMovie={handleAddMovie}
+          onPreviewMovie={handlePreviewMovie}
           trackedMovies={movies}
         />
 
@@ -1035,7 +1088,16 @@ export function Dashboard() {
               movie={selectedMovie}
               onClose={handleCloseModal}
               onUpdate={handleMovieUpdate}
-              onDelete={() => void handleMovieDelete(selectedMovie)}
+              onDelete={() => {
+                if (selectedMovie.id) {
+                  void handleMovieDelete({...selectedMovie, id: selectedMovie.id});
+                }
+              }}
+              tracked={movies.some(movie => movie.id === selectedMovie.id)}
+              onTrack={() => handleTrackMovie({
+                tmdbId: selectedMovie.tmdbId,
+                title: selectedMovie.title,
+              })}
             />
         )}
 

@@ -5,7 +5,9 @@ export type MovieStatus = 'PLANNED' | 'WATCHED';
 export interface MovieEntry {
   id: string;
   tmdbId: number;
+  imdbId?: string;
   title: string;
+  overview?: string;
   releaseDate?: string;
   runtime?: number;
   poster?: string;
@@ -15,6 +17,11 @@ export interface MovieEntry {
   personalRating?: number | null;
   status: MovieStatus;
   watchedDate?: string;
+  lastRefreshedAt?: string;
+}
+
+export interface MoviePreview extends Omit<MovieEntry, 'id'> {
+  id?: string;
 }
 
 export interface MovieSearchResult {

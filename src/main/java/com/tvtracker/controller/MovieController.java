@@ -53,6 +53,14 @@ public class MovieController {
         return metadata.searchMovies(q);
     }
 
+    @GetMapping("/details")
+    public MovieEntry details(@RequestParam long tmdbId) {
+        if (tmdbId <= 0) {
+            throw new InvalidMovieRequestException("A positive tmdbId is required");
+        }
+        return metadata.fetchMovieDetails(tmdbId, false).movie();
+    }
+
     @PostMapping
     public ResponseEntity<MovieStorageService.AddResult> add(@RequestBody AddMovieRequest request)
             throws IOException {

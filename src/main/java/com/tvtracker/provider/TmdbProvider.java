@@ -96,6 +96,7 @@ public class TmdbProvider implements MetadataProvider {
             MovieEntry movie = new MovieEntry();
             movie.tmdbId = tmdbId;
             movie.title = textOrNull(root.path("title"));
+            movie.overview = textOrNull(root.path("overview"));
             movie.releaseDate = textOrNull(root.path("release_date"));
             int runtime = root.path("runtime").asInt(0);
             movie.runtime = runtime > 0 ? runtime : null;

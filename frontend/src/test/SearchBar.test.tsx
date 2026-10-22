@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SearchBar } from '../components/SearchBar';
 import type { ShowSearchResult } from '../types';
 
@@ -7,6 +8,7 @@ vi.mock('../api/client', () => ({
   api: {
     searchShows: vi.fn(),
     searchMovies: vi.fn(),
+    getMovieDetails: vi.fn(),
   },
 }));
 
@@ -22,6 +24,7 @@ describe('SearchBar', () => {
   beforeEach(() => {
     vi.mocked(api.searchShows).mockReset();
     vi.mocked(api.searchMovies).mockReset();
+    vi.mocked(api.getMovieDetails).mockReset();
     history.replaceState({ myShows: true }, '', '/');
   });
 
@@ -91,5 +94,49 @@ describe('SearchBar', () => {
     rerender(<SearchBar mode="shows" onAdd={vi.fn()} onPreview={vi.fn()} />);
     expect(screen.getByPlaceholderText('Search for a TV show...')).toHaveValue('');
     expect(screen.queryByText('Tracked')).not.toBeInTheDocument();
+  });
+
+  it('opens a movie result preview without tracking it', async () => {
+    vi.mocked(api.searchMovies).mockResolvedValue([{
+      tmdbId: 7,
+      title: 'Arrival',
+      overview: 'A first-contact story',
+    }]);
+    const onPreviewMovie = vi.fn();
+    render(
+      <SearchBar
+        mode="movies"
+        onAdd={vi.fn()}
+        onPreview={vi.fn()}
+        onPreviewMovie={onPreviewMovie}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Search for movies...'), {
+      target: { value: 'Arrival' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Arrival/ }));
+
+    expect(onPreviewMovie).toHaveBeenCalledWith(expect.objectContaining({
+      tmdbId: 7,
+      title: 'Arrival',
+    }));
+  });
+
+  it('focuses the search input with one click while movie results are open', async () => {
+    vi.mocked(api.searchMovies).mockResolvedValue([{
+      tmdbId: 7,
+      title: 'Arrival',
+    }]);
+    render(<SearchBar mode="movies" onAdd={vi.fn()} onPreview={vi.fn()} />);
+
+    const input = screen.getByPlaceholderText('Search for movies...');
+    fireEvent.change(input, { target: { value: 'Arrival' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByText('Arrival');
+    await userEvent.click(input);
+
+    expect(document.activeElement).toBe(input);
   });
 });

@@ -289,7 +289,7 @@ body {
 
 /* Search */
 .search-bar { margin-bottom: 1.5rem; position: relative; }
-.search-input-row { display: flex; gap: 0.5rem; }
+.search-input-row { display: flex; gap: 0.5rem; position: relative; z-index: 91; }
 .search-input-container {
   position: relative;
   flex: 1;
@@ -389,6 +389,24 @@ body {
   white-space: nowrap;
 }
 .search-results li button:hover { background: var(--accent-light); }
+.search-results .search-result-preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: normal;
+}
+.search-results .search-result-preview:hover { background: transparent; }
+.search-result-preview > span { display: flex; flex-direction: column; min-width: 0; }
+.search-result-year,
+.search-result-overview { color: var(--text-secondary); }
+.search-result-overview { font-size: 0.8rem; margin-top: 2px; }
 
 /* Tabs — horizontal scrollable material-style underline bar */
 .tabs {
@@ -524,9 +542,11 @@ body {
 .movie-library .section-heading { margin-top: 0.5rem; }
 .movie-library .section-divider { margin: 0.5rem 0 1rem; }
 .movie-detail { max-height: 90vh; overflow: auto; }
-.movie-detail-poster { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; margin-bottom: 1rem; }
 .movie-detail .badges { margin-bottom: 0.75rem; }
-.movie-cast { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
+.movie-meta-line { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; margin: 0.5rem 0; font-size: 0.8rem; color: var(--text-secondary); }
+.movie-detail .modal-poster { width: 180px; }
+.movie-detail .modal-header { margin-bottom: 0; }
+.movie-detail .modal-meta { min-width: 0; }
 .movie-error { color: var(--danger-color); margin-top: 0.75rem; font-size: 0.85rem; }
 .movie-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
 .movie-actions button { font-size: 0.8rem; }
@@ -687,6 +707,8 @@ body {
     margin-bottom: 0;
     border-radius: 0;
   }
+  .movie-detail .modal-poster { width: 100%; }
+  .movie-detail .modal-meta { padding: 0 0.25rem; }
 }
 .modal-meta h2 { font-size: 1.4rem; margin-bottom: 0.5rem; }
 .overview { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.75rem; }

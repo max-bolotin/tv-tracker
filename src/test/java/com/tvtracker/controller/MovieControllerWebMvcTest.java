@@ -72,6 +72,20 @@ class MovieControllerWebMvcTest {
     }
 
     @Test
+    void unauthenticatedMovieDetailsReturnsDescriptionWithoutRatingsEnrichment() throws Exception {
+        MovieEntry movie = movie("Arrival", 42L);
+        movie.overview = "A first-contact story";
+        when(metadata.fetchMovieDetails(42L, false)).thenReturn(new MovieMetadataResult(movie, false));
+
+        mockMvc.perform(get("/api/movies/details").param("tmdbId", "42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Arrival"))
+                .andExpect(jsonPath("$.overview").value("A first-contact story"))
+                .andExpect(jsonPath("$.imdbRating").doesNotExist())
+                .andExpect(jsonPath("$.rottenTomatoesScore").doesNotExist());
+    }
+
+    @Test
     void tooLongSearchReturnsBadRequest() throws Exception {
         mockMvc.perform(get("/api/movies/search").param("q", "a".repeat(101)))
                 .andExpect(status().isBadRequest());

@@ -1,4 +1,4 @@
-import type { CurrentUser, MovieEntry, MovieSearchResult, TrackedShow, ShowSearchResult, WatchStatus, MovieStatus } from '../types';
+import type { CurrentUser, MovieEntry, MoviePreview, MovieSearchResult, TrackedShow, ShowSearchResult, WatchStatus, MovieStatus } from '../types';
 
 const BASE = '/api';
 
@@ -34,6 +34,9 @@ export const api = {
   getMovies: () => req<MovieEntry[]>('/movies'),
 
   searchMovies: (q: string) => req<MovieSearchResult[]>(`/movies/search?q=${encodeURIComponent(q)}`),
+
+  getMovieDetails: (tmdbId: number) =>
+    req<MoviePreview>(`/movies/details?tmdbId=${tmdbId}`),
 
   addMovie: (tmdbId: number) =>
     req<{ movie: MovieEntry; created: boolean }>('/movies', {

@@ -71,6 +71,7 @@ class TmdbProviderMovieTest {
                 {
                   "id":42,
                   "title":"Example Film",
+                  "overview":"A synopsis",
                   "release_date":"",
                   "runtime":0,
                   "poster_path":"/poster.jpg",
@@ -93,6 +94,7 @@ class TmdbProviderMovieTest {
         assertEquals("en-US", queryParameter("language"));
         assertEquals(42L, movie.tmdbId);
         assertEquals("Example Film", movie.title);
+        assertEquals("A synopsis", movie.overview);
         assertNull(movie.releaseDate);
         assertNull(movie.runtime);
         assertEquals("https://images.example/poster.jpg", movie.poster);

@@ -18,6 +18,9 @@ public final class MovieMetadataMerger {
         if (fresh.title != null) {
             current.title = fresh.title;
         }
+        if (fresh.overview != null) {
+            current.overview = fresh.overview;
+        }
         if (fresh.releaseDate != null) {
             current.releaseDate = fresh.releaseDate;
         }

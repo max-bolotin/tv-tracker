@@ -9,6 +9,7 @@ interface Props {
   onResultsOpenChange?: (isOpen: boolean) => void;
   mode?: 'shows' | 'movies';
   onAddMovie?: (result: MovieSearchResult) => void;
+  onPreviewMovie?: (result: MovieSearchResult) => void;
   trackedMovies?: MovieEntry[];
 }
 
@@ -18,7 +19,7 @@ export interface SearchBarHandle {
 }
 
 export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
-  { onAdd, onPreview, onResultsOpenChange, mode = 'shows', onAddMovie, trackedMovies = [] },
+  { onAdd, onPreview, onResultsOpenChange, mode = 'shows', onAddMovie, onPreviewMovie, trackedMovies = [] },
   ref,
 ) {
   const [query, setQuery] = useState('');
@@ -177,12 +178,23 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
               const tracked = trackedMovies.find(entry => entry.tmdbId === movie.tmdbId);
               return (
                 <li key={movie.tmdbId}>
-                  {movie.poster && <img src={movie.poster} alt={movie.title} />}
-                  <div>
-                    <strong>{movie.title}</strong>
-                    {movie.releaseDate && <p>{movie.releaseDate.slice(0, 4)}</p>}
-                    {movie.overview && <p>{movie.overview.slice(0, 100)}{movie.overview.length > 100 ? '…' : ''}</p>}
-                  </div>
+                  <button
+                    className="search-result-preview"
+                    type="button"
+                    onClick={() => {
+                      closeResults();
+                      onPreviewMovie?.(movie);
+                    }}
+                  >
+                    {movie.poster && <img src={movie.poster} alt="" />}
+                    <span>
+                      <strong>{movie.title}</strong>
+                      {movie.releaseDate && <span className="search-result-year">{movie.releaseDate.slice(0, 4)}</span>}
+                      {movie.overview && <span className="search-result-overview">
+                        {movie.overview.slice(0, 100)}{movie.overview.length > 100 ? '…' : ''}
+                      </span>}
+                    </span>
+                  </button>
                   {tracked ? (
                     <span className="search-tracked-label">Tracked</span>
                   ) : (
