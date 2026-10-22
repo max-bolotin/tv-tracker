@@ -2,6 +2,7 @@ package com.tvtracker.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class OmdbProviderMovieTest {
     private HttpServer server;
     private String responseBody;
+    private int responseStatus = 200;
     private final AtomicReference<String> requestTarget = new AtomicReference<>();
 
     @BeforeEach
@@ -26,7 +28,7 @@ class OmdbProviderMovieTest {
         server.createContext("/", exchange -> {
             requestTarget.set(exchange.getRequestURI().toString());
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, body.length);
+            exchange.sendResponseHeaders(responseStatus, body.length);
             try (var output = exchange.getResponseBody()) {
                 output.write(body);
             }
@@ -88,6 +90,19 @@ class OmdbProviderMovieTest {
 
         assertEquals("7.0", movie.imdbRating);
         assertEquals("80%", movie.rottenTomatoesScore);
+    }
+
+    @Test
+    void omdbHttpFailureIsReportedAsUpstreamFailure() {
+        responseBody = """
+                {"Response":"False","Error":"Service unavailable"}
+                """;
+        responseStatus = 503;
+        MovieEntry movie = new MovieEntry();
+        movie.imdbId = "tt0000042";
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                UpstreamServiceException.class, () -> provider().enrichMovie(movie));
     }
 
     private OmdbProvider provider() {

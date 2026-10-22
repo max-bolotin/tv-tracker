@@ -3,6 +3,7 @@ package com.tvtracker.storage;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.controller.SseController;
+import com.tvtracker.exception.MovieNotFoundException;
 import com.tvtracker.model.MovieEntry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Service
 public class MovieStorageService {
@@ -62,6 +64,20 @@ public class MovieStorageService {
         return load(userId).stream()
                 .filter(movie -> Objects.equals(movie.id, id))
                 .findFirst();
+    }
+
+    public synchronized MovieEntry update(String userId, String id, Consumer<MovieEntry> mutator)
+            throws IOException {
+        Objects.requireNonNull(mutator, "mutator");
+        List<MovieEntry> movies = load(userId);
+        MovieEntry movie = movies.stream()
+                .filter(candidate -> Objects.equals(candidate.id, id))
+                .findFirst()
+                .orElseThrow(() -> new MovieNotFoundException(id));
+        mutator.accept(movie);
+        writeMoviesToFile(resolveUserFile(userId), movies);
+        sse.broadcastMoviesChanged();
+        return movie;
     }
 
     public synchronized MovieEntry save(MovieEntry movie) throws IOException {

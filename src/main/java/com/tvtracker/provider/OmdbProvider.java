@@ -2,6 +2,7 @@ package com.tvtracker.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
@@ -93,7 +94,7 @@ public class OmdbProvider {
             log.debug("OMDb enriched movie '{}': imdb={} rt={}",
                     movie.title, movie.imdbRating, movie.rottenTomatoesScore);
         } catch (Exception e) {
-            log.warn("OMDb enrichMovie failed for '{}': {}", movie.title, e.getMessage());
+            throw new UpstreamServiceException("OMDb movie enrichment failed for '" + movie.title + "'", e);
         }
     }
 

@@ -4,6 +4,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tvtracker.exception.MovieNotFoundException;
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -53,6 +55,7 @@ public class TmdbProvider implements MetadataProvider {
                     .queryParam("api_key", apiKey)
                     .queryParam("query", query)
                     .queryParam("include_adult", false)
+                    .queryParam("language", "en-US")
                     .build()
                     .encode()
                     .toUriString();
@@ -69,8 +72,10 @@ public class TmdbProvider implements MetadataProvider {
                 results.add(result);
             }
             return results;
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("TMDB movie search failed", e);
+            throw new UpstreamServiceException("TMDB movie search failed", e);
         }
     }
 
@@ -79,19 +84,21 @@ public class TmdbProvider implements MetadataProvider {
             String url = UriComponentsBuilder.fromUriString(baseUrl + "/movie/" + tmdbId)
                     .queryParam("api_key", apiKey)
                     .queryParam("append_to_response", "credits,external_ids")
+                    .queryParam("language", "en-US")
                     .build()
                     .encode()
                     .toUriString();
-            JsonNode root = get(url);
+            JsonNode root = getMovie(url, tmdbId);
             if (root.path("id").asLong(-1) != tmdbId) {
-                throw new IllegalArgumentException("TMDB returned no movie for id=" + tmdbId);
+                throw new MovieNotFoundException("TMDB movie not found: " + tmdbId);
             }
 
             MovieEntry movie = new MovieEntry();
             movie.tmdbId = tmdbId;
             movie.title = textOrNull(root.path("title"));
             movie.releaseDate = textOrNull(root.path("release_date"));
-            movie.runtime = root.path("runtime").canConvertToInt() ? root.path("runtime").asInt() : null;
+            int runtime = root.path("runtime").asInt(0);
+            movie.runtime = runtime > 0 ? runtime : null;
             String posterPath = textOrNull(root.path("poster_path"));
             movie.poster = posterPath == null ? null : imageBaseUrl + posterPath;
 
@@ -117,8 +124,10 @@ public class TmdbProvider implements MetadataProvider {
                 }
             }
             return movie;
+        } catch (MovieNotFoundException | UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("TMDB fetchMovieDetails failed for id=" + tmdbId, e);
+            throw new UpstreamServiceException("TMDB fetchMovieDetails failed for id=" + tmdbId, e);
         }
     }
 
@@ -334,6 +343,18 @@ public class TmdbProvider implements MetadataProvider {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) throw new RuntimeException("HTTP " + resp.statusCode());
+        return mapper.readTree(resp.body());
+    }
+
+    private JsonNode getMovie(String url, long tmdbId) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 404) {
+            throw new MovieNotFoundException("TMDB movie not found: " + tmdbId);
+        }
+        if (resp.statusCode() != 200) {
+            throw new UpstreamServiceException("TMDB movie request failed with HTTP " + resp.statusCode());
+        }
         return mapper.readTree(resp.body());
     }
 

@@ -2,6 +2,8 @@ package com.tvtracker.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import com.tvtracker.exception.MovieNotFoundException;
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieSearchResult;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class TmdbProviderMovieTest {
     private HttpServer server;
     private String responseBody;
+    private int responseStatus = 200;
     private final AtomicReference<String> requestTarget = new AtomicReference<>();
 
     @BeforeEach
@@ -28,7 +31,7 @@ class TmdbProviderMovieTest {
         server.createContext("/", exchange -> {
             requestTarget.set(exchange.getRequestURI().toString());
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, body.length);
+            exchange.sendResponseHeaders(responseStatus, body.length);
             try (var output = exchange.getResponseBody()) {
                 output.write(body);
             }
@@ -54,6 +57,7 @@ class TmdbProviderMovieTest {
         assertEquals("test-key", queryParameter("api_key"));
         assertEquals("Example Film", queryParameter("query"));
         assertEquals("false", queryParameter("include_adult"));
+        assertEquals("en-US", queryParameter("language"));
         assertEquals(42L, result.tmdbId);
         assertEquals("Example Film", result.title);
         assertEquals("2020-01-02", result.releaseDate);
@@ -67,8 +71,8 @@ class TmdbProviderMovieTest {
                 {
                   "id":42,
                   "title":"Example Film",
-                  "release_date":"2020-01-02",
-                  "runtime":118,
+                  "release_date":"",
+                  "runtime":0,
                   "poster_path":"/poster.jpg",
                   "external_ids":{"imdb_id":"tt0000042"},
                   "credits":{"cast":[
@@ -86,10 +90,11 @@ class TmdbProviderMovieTest {
 
         assertEquals("/3/movie/42", serverPath());
         assertEquals("credits,external_ids", queryParameter("append_to_response"));
+        assertEquals("en-US", queryParameter("language"));
         assertEquals(42L, movie.tmdbId);
         assertEquals("Example Film", movie.title);
-        assertEquals("2020-01-02", movie.releaseDate);
-        assertEquals(118, movie.runtime);
+        assertNull(movie.releaseDate);
+        assertNull(movie.runtime);
         assertEquals("https://images.example/poster.jpg", movie.poster);
         assertEquals("tt0000042", movie.imdbId);
         assertEquals(5, movie.cast.size());
@@ -100,12 +105,32 @@ class TmdbProviderMovieTest {
     }
 
     @Test
-    void fetchMovieDetailsRejectsErrorPayloadInsteadOfCreatingEmptyMovie() {
+    void fetchMovieDetailsMapsTmdbNotFoundToMovieNotFound() {
         responseBody = """
                 {"status_code":34,"status_message":"The resource you requested could not be found."}
                 """;
+        responseStatus = 404;
 
-        assertThrows(RuntimeException.class, () -> provider().fetchMovieDetails(42));
+        assertThrows(MovieNotFoundException.class, () -> provider().fetchMovieDetails(42));
+    }
+
+    @Test
+    void fetchMovieDetailsMapsTmdbOutageToUpstreamFailure() {
+        responseBody = """
+                {"status_message":"Service unavailable"}
+                """;
+        responseStatus = 503;
+
+        assertThrows(UpstreamServiceException.class, () -> provider().fetchMovieDetails(42));
+    }
+
+    @Test
+    void fetchMovieDetailsTreatsMissingMovieIdAsNotFound() {
+        responseBody = """
+                {"status_code":34,"status_message":"Not found"}
+                """;
+
+        assertThrows(MovieNotFoundException.class, () -> provider().fetchMovieDetails(42));
     }
 
     private TmdbProvider provider() {

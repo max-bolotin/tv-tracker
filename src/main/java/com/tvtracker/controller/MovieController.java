@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Locale;
 import java.util.List;
@@ -32,10 +33,12 @@ import java.util.Objects;
 public class MovieController {
     private final MovieStorageService storage;
     private final MetadataService metadata;
+    private final Clock clock;
 
-    public MovieController(MovieStorageService storage, MetadataService metadata) {
+    public MovieController(MovieStorageService storage, MetadataService metadata, Clock clock) {
         this.storage = storage;
         this.metadata = metadata;
+        this.clock = clock;
     }
 
     @GetMapping("/search")
@@ -99,10 +102,16 @@ public class MovieController {
         }
 
         String userId = CurrentUserContext.currentUserId();
-        MovieEntry movie = findMovie(userId, id);
-        movie.status = status;
-        movie.watchedDate = status == MovieStatus.WATCHED ? LocalDate.now().toString() : null;
-        return storage.save(userId, movie);
+        return storage.update(userId, id, movie -> {
+            if (status == MovieStatus.WATCHED) {
+                if (movie.status != MovieStatus.WATCHED) {
+                    movie.watchedDate = LocalDate.now(clock).toString();
+                }
+            } else {
+                movie.watchedDate = null;
+            }
+            movie.status = status;
+        });
     }
 
     @PatchMapping("/{id}/rating")
@@ -114,9 +123,7 @@ public class MovieController {
             throw new InvalidMovieRequestException("Personal rating must be between 0 and 10 in 0.5 steps");
         }
         String userId = CurrentUserContext.currentUserId();
-        MovieEntry movie = findMovie(userId, id);
-        movie.personalRating = rating;
-        return storage.save(userId, movie);
+        return storage.update(userId, id, movie -> movie.personalRating = rating);
     }
 
     @DeleteMapping("/{id}")
@@ -141,12 +148,22 @@ public class MovieController {
         String userId = CurrentUserContext.currentUserId();
         MovieEntry existing = findMovie(userId, id);
         MovieEntry fresh = metadata.fetchMovieDetails(existing.tmdbId);
-        fresh.id = existing.id;
-        fresh.tmdbId = existing.tmdbId;
-        fresh.status = existing.status;
-        fresh.watchedDate = existing.watchedDate;
-        fresh.personalRating = existing.personalRating;
-        return storage.save(userId, fresh);
+        return storage.update(userId, id, current -> {
+            current.tmdbId = fresh.tmdbId;
+            current.mediaType = fresh.mediaType;
+            current.imdbId = fresh.imdbId;
+            current.title = fresh.title;
+            current.releaseDate = fresh.releaseDate;
+            current.runtime = fresh.runtime;
+            current.poster = fresh.poster;
+            current.cast = fresh.cast;
+            if (fresh.imdbRating != null) {
+                current.imdbRating = fresh.imdbRating;
+            }
+            if (fresh.rottenTomatoesScore != null) {
+                current.rottenTomatoesScore = fresh.rottenTomatoesScore;
+            }
+        });
     }
 
     private MovieEntry findMovie(String id) throws IOException {

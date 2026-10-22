@@ -1,5 +1,6 @@
 package com.tvtracker.provider;
 
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieSearchResult;
@@ -56,14 +57,14 @@ public class MetadataService {
 
   public List<MovieSearchResult> searchMovies(String query) {
     if (!tmdb.isConfigured()) {
-      throw new IllegalStateException("TMDB is not configured");
+      throw new UpstreamServiceException("TMDB is not configured");
     }
     return tmdb.searchMovies(query);
   }
 
   public MovieEntry fetchMovieDetails(long tmdbId) {
     if (!tmdb.isConfigured()) {
-      throw new IllegalStateException("TMDB is not configured");
+      throw new UpstreamServiceException("TMDB is not configured");
     }
     MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
     if (omdb != null && omdb.isConfigured()) {
@@ -162,7 +163,7 @@ public class MetadataService {
       fTmdb = CompletableFuture.completedFuture(null);
     }
 
-    if (tvmazeId != null) {
+    if (tvmaze != null && tvmazeId != null) {
       fTvmaze = CompletableFuture.supplyAsync(() -> {
         try {
           return tvmaze.fetchDetails(tvmazeId);

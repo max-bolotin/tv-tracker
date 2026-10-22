@@ -14,6 +14,9 @@ import org.mockito.MockedStatic;
 import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,7 +41,8 @@ class MovieControllerTest {
     void setUp() {
         storage = mock(MovieStorageService.class);
         metadata = mock(MetadataService.class);
-        controller = new MovieController(storage, metadata);
+        controller = new MovieController(storage, metadata,
+                Clock.fixed(Instant.parse("2026-10-22T00:00:00Z"), ZoneOffset.UTC));
         userContext = mockStatic(CurrentUserContext.class);
         userContext.when(CurrentUserContext::currentUserId).thenReturn(USER_ID);
     }
@@ -86,15 +90,25 @@ class MovieControllerTest {
     void watchedStatusSetsDateAndUnmarkingClearsIt() throws Exception {
         MovieEntry movie = movie("Arrival", 42L);
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(movie));
-        when(storage.save(USER_ID, movie)).thenReturn(movie);
+        when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
+            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
+            return movie;
+        });
 
         MovieEntry watched = controller.updateStatus("movie-id", new MovieController.StatusUpdate("WATCHED"));
         assertThat(watched.status).isEqualTo(MovieStatus.WATCHED);
-        assertThat(watched.watchedDate).isNotBlank();
+        assertThat(watched.watchedDate).isEqualTo("2026-10-22");
+        watched.watchedDate = "2026-01-05";
 
         MovieEntry planned = controller.updateStatus("movie-id", new MovieController.StatusUpdate("PLANNED"));
         assertThat(planned.status).isEqualTo(MovieStatus.PLANNED);
         assertThat(planned.watchedDate).isNull();
+
+        watched.status = MovieStatus.WATCHED;
+        watched.watchedDate = "2026-01-05";
+        MovieEntry stillWatched = controller.updateStatus(
+                "movie-id", new MovieController.StatusUpdate("WATCHED"));
+        assertThat(stillWatched.watchedDate).isEqualTo("2026-01-05");
     }
 
     @Test
@@ -117,7 +131,10 @@ class MovieControllerTest {
     void personalRatingAllowsHalfStepsAndNullToClear() throws Exception {
         MovieEntry movie = movie("Arrival", 42L);
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(movie));
-        when(storage.save(USER_ID, movie)).thenReturn(movie);
+        when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
+            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
+            return movie;
+        });
 
         controller.updatePersonalRating("movie-id", new MovieController.PersonalRatingUpdate(8.5));
         assertThat(movie.personalRating).isEqualTo(8.5);
@@ -134,17 +151,31 @@ class MovieControllerTest {
         existing.watchedDate = "2026-10-20";
         existing.personalRating = 9.0;
         MovieEntry refreshed = movie("Updated title", 42L);
+        refreshed.id = null;
+        MovieEntry latest = movie("Old title after concurrent edit", 42L);
+        latest.id = "movie-id";
+        latest.status = MovieStatus.PLANNED;
+        latest.watchedDate = null;
+        latest.personalRating = 6.5;
+        latest.imdbRating = "8.2";
+        latest.rottenTomatoesScore = "92%";
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(existing));
         when(metadata.fetchMovieDetails(42L)).thenReturn(refreshed);
-        when(storage.save(eq(USER_ID), any(MovieEntry.class))).thenAnswer(invocation -> invocation.getArgument(1));
+        when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
+            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(latest);
+            return latest;
+        });
 
         MovieEntry result = controller.refresh("movie-id");
 
         assertThat(result.title).isEqualTo("Updated title");
         assertThat(result.id).isEqualTo("movie-id");
-        assertThat(result.status).isEqualTo(MovieStatus.WATCHED);
-        assertThat(result.watchedDate).isEqualTo("2026-10-20");
-        assertThat(result.personalRating).isEqualTo(9.0);
+        assertThat(result.status).isEqualTo(MovieStatus.PLANNED);
+        assertThat(result.watchedDate).isNull();
+        assertThat(result.personalRating).isEqualTo(6.5);
+        assertThat(result.imdbRating).isEqualTo("8.2");
+        assertThat(result.rottenTomatoesScore).isEqualTo("92%");
+        assertThat(refreshed.id).isNull();
     }
 
     @Test

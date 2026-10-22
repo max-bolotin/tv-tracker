@@ -90,6 +90,25 @@ class MovieStorageServiceTest {
     }
 
     @Test
+    void updateMutatesFreshlyLoadedEntryAndPersistsUnderServiceLock() throws Exception {
+        MovieStorageService storage = createService(tempDir.resolve("users"));
+        MovieEntry movie = movie("Original");
+        movie.id = "movie-id";
+        movie.personalRating = 7.0;
+        storage.save("alice", movie);
+
+        MovieEntry updated = storage.update("alice", "movie-id", current -> {
+            current.title = "Updated";
+            current.personalRating = 9.0;
+        });
+
+        MovieEntry loaded = storage.load("alice").getFirst();
+        assertEquals("Updated", updated.title);
+        assertEquals("Updated", loaded.title);
+        assertEquals(9.0, loaded.personalRating);
+    }
+
+    @Test
     void saveIfTmdbIdAbsentReturnsExistingMovieInsteadOfCreatingDuplicate() throws Exception {
         MovieStorageService storage = createService(tempDir.resolve("users"));
         MovieEntry original = movie("Arrival");
