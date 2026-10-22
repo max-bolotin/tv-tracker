@@ -377,14 +377,23 @@ export function Dashboard() {
       e.target.value = '';
       return;
     }
+    const confirmed = window.confirm(
+      'Import this file? Any show sections or movies included in it will replace the corresponding existing data. Sections omitted from the file will be left unchanged.'
+    );
+    if (!confirmed) {
+      e.target.value = '';
+      return;
+    }
     e.target.value = '';
     setImporting(true);
     try {
       const result = await api.importData(file);
       console.info('[Import] complete:', result);
-      if (result.failedTitles.length > 0) {
-        sessionStorage.setItem('importToast', `Imported ${result.total} shows. Could not fetch metadata for: ${result.failedTitles.join(', ')}`);
-      }
+      const importedMessage = `Imported ${result.showsImported} shows and ${result.moviesImported} movies.`;
+      const failuresMessage = result.failedTitles.length > 0
+        ? ` Could not fetch metadata for: ${result.failedTitles.join(', ')}`
+        : '';
+      sessionStorage.setItem('importToast', importedMessage + failuresMessage);
       window.location.reload();
     } catch (err) {
       console.error('[Import] failed:', err);

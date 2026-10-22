@@ -62,25 +62,37 @@ public class MetadataService {
     return tmdb.searchMovies(query);
   }
 
-  public MovieEntry fetchMovieDetails(long tmdbId) {
+  public MovieMetadataResult fetchMovieDetails(long tmdbId) {
     return fetchMovieDetails(tmdbId, true);
   }
 
-  public MovieEntry fetchMovieDetails(long tmdbId, boolean enrichWithOmdb) {
+  public MovieMetadataResult fetchMovieDetails(long tmdbId, boolean allowOmdb) {
     if (!tmdb.isConfigured()) {
       throw new UpstreamServiceException("TMDB is not configured");
     }
     MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
-    if (enrichWithOmdb && omdb != null && omdb.isConfigured()) {
-      try {
-        omdb.enrichMovie(movie);
-      } catch (UpstreamServiceException e) {
-        log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
-            movie.title, e.getMessage());
-      }
+    if (!isMovieOmdbEnrichmentApplicable(movie)) {
+      return new MovieMetadataResult(movie, true);
     }
-    return movie;
+    if (!allowOmdb) {
+      return new MovieMetadataResult(movie, false);
+    }
+    try {
+      omdb.enrichMovie(movie);
+      return new MovieMetadataResult(movie, true);
+    } catch (UpstreamServiceException e) {
+      log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
+          movie.title, e.getMessage());
+      return new MovieMetadataResult(movie, false);
+    }
   }
+
+  public boolean isMovieOmdbEnrichmentApplicable(MovieEntry movie) {
+    return movie != null && movie.imdbId != null && !movie.imdbId.isBlank()
+        && omdb != null && omdb.isConfigured();
+  }
+
+  public record MovieMetadataResult(MovieEntry movie, boolean ratingsRefreshed) {}
 
   public void hydrateMissingTmdbId(TrackedShow show) {
     if (show == null || show.tmdbId != null || show.title == null || show.title.isBlank()) {

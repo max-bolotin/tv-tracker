@@ -6,6 +6,8 @@ import java.util.List;
 /** Human-friendly import/export format. */
 public class ImportExportPayload {
 
+    public Integer version;
+
     @JsonProperty("shows")
     public List<ImportShow> shows;
 
@@ -20,6 +22,8 @@ public class ImportExportPayload {
 
     @JsonProperty("stopped_shows")
     public List<ImportShow> stoppedShows;
+
+    public List<MovieEntry> movies;
 
     public static class ImportShow {
         public String title;

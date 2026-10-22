@@ -4,6 +4,7 @@ import com.tvtracker.controller.SseController;
 import com.tvtracker.exception.MovieNotFoundException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.MetadataService.MovieMetadataResult;
 import com.tvtracker.storage.JsonStorageService;
 import com.tvtracker.storage.MovieStorageService;
 import java.time.Clock;
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -78,17 +80,27 @@ class MovieRefreshSchedulerTest {
         existing.id = "one";
         existing.imdbRating = "8.1";
         existing.rottenTomatoesScore = "91%";
+        existing.imdbId = "tt1234567";
+        existing.poster = "/existing.jpg";
+        existing.cast = new java.util.ArrayList<>(List.of(new com.tvtracker.model.Actor("Actor", null)));
         MovieEntry fresh = movie(1L, null);
+        fresh.imdbId = null;
+        fresh.poster = null;
+        fresh.cast = new java.util.ArrayList<>();
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(existing));
-        when(metadata.fetchMovieDetails(1L, true)).thenReturn(fresh);
+        when(metadata.fetchMovieDetails(1L, true)).thenReturn(new MovieMetadataResult(fresh, false));
+        when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
 
         assertThat(existing.imdbRating).isEqualTo("8.1");
         assertThat(existing.rottenTomatoesScore).isEqualTo("91%");
-        assertThat(existing.lastRefreshedAt).isEqualTo(NOW);
+        assertThat(existing.lastRefreshedAt).isNull();
+        assertThat(existing.imdbId).isEqualTo("tt1234567");
+        assertThat(existing.poster).isEqualTo("/existing.jpg");
+        assertThat(existing.cast).hasSize(1);
     }
 
     @Test
@@ -100,7 +112,9 @@ class MovieRefreshSchedulerTest {
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(missing, healthy));
         when(metadata.fetchMovieDetails(1L, true)).thenThrow(new MovieNotFoundException("1"));
-        when(metadata.fetchMovieDetails(2L, false)).thenReturn(movie(2L, "2026-10-01"));
+        MovieEntry fresh = movie(2L, "2026-10-01");
+        when(metadata.fetchMovieDetails(2L, true)).thenReturn(new MovieMetadataResult(fresh, true));
+        when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
@@ -120,7 +134,9 @@ class MovieRefreshSchedulerTest {
         when(showStorage.listUserIds()).thenReturn(List.of("alice", "bob"));
         when(movieStorage.load("alice")).thenReturn(List.of(first));
         when(movieStorage.load("bob")).thenReturn(List.of(second));
-        when(metadata.fetchMovieDetails(7L, true)).thenReturn(movie(7L, "2026-10-01"));
+        MovieEntry fresh = movie(7L, "2026-10-01");
+        when(metadata.fetchMovieDetails(7L, true)).thenReturn(new MovieMetadataResult(fresh, true));
+        when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
@@ -128,7 +144,7 @@ class MovieRefreshSchedulerTest {
         verify(metadata).fetchMovieDetails(7L, true);
         verify(movieStorage).update(eq("alice"), eq("first"), any(), eq(false));
         verify(movieStorage).update(eq("bob"), eq("second"), any(), eq(false));
-        verify(sse, org.mockito.Mockito.times(2)).broadcastMoviesChanged();
+        verify(sse).broadcastMoviesChanged();
     }
 
     @Test
@@ -139,8 +155,12 @@ class MovieRefreshSchedulerTest {
         second.id = "second";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(first, second));
-        when(metadata.fetchMovieDetails(11L, true)).thenReturn(movie(11L, "2026-10-01"));
-        when(metadata.fetchMovieDetails(12L, false)).thenReturn(movie(12L, "2026-10-01"));
+        MovieEntry freshFirst = movie(11L, "2026-10-01");
+        MovieEntry freshSecond = movie(12L, "2026-10-01");
+        when(metadata.fetchMovieDetails(11L, true)).thenReturn(new MovieMetadataResult(freshFirst, true));
+        when(metadata.fetchMovieDetails(12L, false)).thenReturn(new MovieMetadataResult(freshSecond, false));
+        when(metadata.isMovieOmdbEnrichmentApplicable(freshFirst)).thenReturn(true);
+        when(metadata.isMovieOmdbEnrichmentApplicable(freshSecond)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
@@ -153,7 +173,7 @@ class MovieRefreshSchedulerTest {
     private void stubUpdateMutatesEntry() throws Exception {
         doAnswer(invocation -> {
             MovieEntry current = findMovie(invocation.getArgument(0), invocation.getArgument(1));
-            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(current);
+            ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(current);
             return current;
         }).when(movieStorage).update(any(), any(), any(), eq(false));
     }

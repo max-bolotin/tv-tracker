@@ -80,7 +80,7 @@ export const api = {
   importData: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return req<{ total: number; failedTitles: string[] }>('/data/import', { method: 'POST', body: form });
+    return req<{ showsImported: number; moviesImported: number; failedTitles: string[] }>('/data/import', { method: 'POST', body: form });
   },
 
   refresh: () => req<string>('/data/refresh', { method: 'POST' }),

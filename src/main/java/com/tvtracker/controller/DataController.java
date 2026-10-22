@@ -7,6 +7,8 @@ import com.tvtracker.scheduler.DailyUpdateScheduler;
 import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.ImportService;
 import com.tvtracker.storage.JsonStorageService;
+import com.tvtracker.storage.DataImportService;
+import com.tvtracker.storage.MovieStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -26,13 +28,18 @@ public class DataController {
 
     private final JsonStorageService storage;
     private final ImportService importService;
+    private final DataImportService dataImportService;
+    private final MovieStorageService movieStorage;
     private final ObjectMapper mapper;
     private final DailyUpdateScheduler scheduler;
 
     public DataController(JsonStorageService storage, ImportService importService,
+                          DataImportService dataImportService, MovieStorageService movieStorage,
                           ObjectMapper mapper, DailyUpdateScheduler scheduler) {
         this.storage = storage;
         this.importService = importService;
+        this.dataImportService = dataImportService;
+        this.movieStorage = movieStorage;
         this.mapper = mapper;
         this.scheduler = scheduler;
     }
@@ -42,6 +49,8 @@ public class DataController {
         String userId = CurrentUserContext.currentUserId();
         List<TrackedShow> shows = storage.loadAll(userId);
         ImportExportPayload payload = importService.toPayload(shows);
+        payload.version = 2;
+        payload.movies = movieStorage.load(userId);
         byte[] json = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(payload);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"tv-tracker-export.json\"")
@@ -56,12 +65,11 @@ public class DataController {
 
         // Stream the multipart to avoid loading entire file into memory
         try (var in = file.getInputStream()) {
-            ImportExportPayload payload = mapper.readValue(in, ImportExportPayload.class);
-            ImportService.ImportResult result = importService.resolve(payload);
-            storage.saveAll(userId, result.shows());
-            log.debug("Import complete: {} shows saved, {} stubs: {}",
-                    result.shows().size(), result.stubTitles().size(), result.stubTitles());
-            return ResponseEntity.ok(new ImportResult(result.shows().size(), result.stubTitles()));
+            DataImportService.ImportSummary result = dataImportService.importData(in, userId);
+            log.debug("Import complete: {} shows and {} movies saved, stubs: {}",
+                    result.showsImported(), result.moviesImported(), result.failedTitles());
+            return ResponseEntity.ok(new ImportResult(
+                    result.showsImported(), result.moviesImported(), result.failedTitles()));
         }
     }
 

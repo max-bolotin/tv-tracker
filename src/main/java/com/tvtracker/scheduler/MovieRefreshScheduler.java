@@ -3,6 +3,7 @@ package com.tvtracker.scheduler;
 import com.tvtracker.controller.SseController;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.MovieMetadataMerger;
 import com.tvtracker.storage.JsonStorageService;
 import com.tvtracker.storage.MovieStorageService;
 import java.time.Clock;
@@ -11,11 +12,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -87,18 +86,18 @@ public class MovieRefreshScheduler {
             }
         }
 
-        Set<String> changedUsers = new HashSet<>();
+        boolean changed = false;
         int omdbCalls = 0;
         int refreshedMovies = 0;
         for (Map.Entry<Long, List<MovieReference>> entry : referencesByTmdbId.entrySet()) {
             long tmdbId = entry.getKey();
-            MovieEntry fresh;
+            MetadataService.MovieMetadataResult result;
             try {
                 boolean enrichWithOmdb = omdbCalls < omdbMaxCallsPerRun;
-                if (enrichWithOmdb) {
+                result = metadata.fetchMovieDetails(tmdbId, enrichWithOmdb);
+                if (enrichWithOmdb && metadata.isMovieOmdbEnrichmentApplicable(result.movie())) {
                     omdbCalls++;
                 }
-                fresh = metadata.fetchMovieDetails(tmdbId, enrichWithOmdb);
                 refreshedMovies++;
             } catch (Exception e) {
                 log.warn("Movie refresh failed for TMDB id {}: {}", tmdbId, e.getMessage());
@@ -108,10 +107,12 @@ public class MovieRefreshScheduler {
             for (MovieReference reference : entry.getValue()) {
                 try {
                     movieStorage.update(reference.userId(), reference.movieId(), current -> {
-                        applyMetadata(current, fresh);
-                        current.lastRefreshedAt = now;
+                        MovieMetadataMerger.merge(current, result.movie());
+                        if (result.ratingsRefreshed()) {
+                            current.lastRefreshedAt = now;
+                        }
                     }, false);
-                    changedUsers.add(reference.userId());
+                    changed = true;
                 } catch (Exception e) {
                     log.warn("Movie refresh failed applying TMDB id {} to user {} movie {}: {}",
                             tmdbId, reference.userId(), reference.movieId(), e.getMessage());
@@ -119,9 +120,11 @@ public class MovieRefreshScheduler {
             }
         }
 
-        changedUsers.forEach(ignored -> sse.broadcastMoviesChanged());
-        log.info("Movie refresh completed: {} unique movies, {} user(s) updated",
-                refreshedMovies, changedUsers.size());
+        if (changed) {
+            sse.broadcastMoviesChanged();
+        }
+        log.info("Movie refresh completed: {} unique movies, changes applied: {}",
+                refreshedMovies, changed);
     }
 
     boolean shouldRefresh(MovieEntry movie, Instant now) {
@@ -148,23 +151,6 @@ public class MovieRefreshScheduler {
             return LocalDate.parse(releaseDate);
         } catch (DateTimeParseException e) {
             return null;
-        }
-    }
-
-    private static void applyMetadata(MovieEntry current, MovieEntry fresh) {
-        current.tmdbId = fresh.tmdbId;
-        current.mediaType = fresh.mediaType;
-        current.imdbId = fresh.imdbId;
-        current.title = fresh.title;
-        current.releaseDate = fresh.releaseDate;
-        current.runtime = fresh.runtime;
-        current.poster = fresh.poster;
-        current.cast = fresh.cast;
-        if (fresh.imdbRating != null) {
-            current.imdbRating = fresh.imdbRating;
-        }
-        if (fresh.rottenTomatoesScore != null) {
-            current.rottenTomatoesScore = fresh.rottenTomatoesScore;
         }
     }
 

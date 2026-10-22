@@ -5,8 +5,10 @@ import com.tvtracker.exception.MovieNotFoundException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieStatus;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.MetadataService.MovieMetadataResult;
 import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.MovieStorageService;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,13 +59,14 @@ class MovieControllerTest {
         MovieEntry fetched = movie("Arrival", 42L);
         MovieStorageService.AddResult addResult = new MovieStorageService.AddResult(fetched, true);
         when(storage.load(USER_ID)).thenReturn(List.of());
-        when(metadata.fetchMovieDetails(42L)).thenReturn(fetched);
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(fetched, true));
         when(storage.saveIfTmdbIdAbsent(eq(USER_ID), any(MovieEntry.class))).thenReturn(addResult);
 
         var response = controller.add(new MovieController.AddMovieRequest(42L));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isEqualTo(addResult);
+        assertThat(fetched.lastRefreshedAt).isEqualTo(Instant.parse("2026-10-22T00:00:00Z"));
         verify(metadata).fetchMovieDetails(42L);
         verify(storage).saveIfTmdbIdAbsent(USER_ID, fetched);
     }
@@ -91,7 +94,7 @@ class MovieControllerTest {
         MovieEntry movie = movie("Arrival", 42L);
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(movie));
         when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
-            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
+            ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
             return movie;
         });
 
@@ -132,7 +135,7 @@ class MovieControllerTest {
         MovieEntry movie = movie("Arrival", 42L);
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(movie));
         when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
-            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
+            ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(movie);
             return movie;
         });
 
@@ -160,9 +163,9 @@ class MovieControllerTest {
         latest.imdbRating = "8.2";
         latest.rottenTomatoesScore = "92%";
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(existing));
-        when(metadata.fetchMovieDetails(42L)).thenReturn(refreshed);
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(refreshed, true));
         when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
-            ((java.util.function.Consumer<MovieEntry>) invocation.getArgument(2)).accept(latest);
+            ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(latest);
             return latest;
         });
 
@@ -177,6 +180,38 @@ class MovieControllerTest {
         assertThat(result.rottenTomatoesScore).isEqualTo("92%");
         assertThat(result.lastRefreshedAt).isEqualTo(Instant.parse("2026-10-22T00:00:00Z"));
         assertThat(refreshed.id).isNull();
+    }
+
+    @Test
+    void addDoesNotSetRefreshTimeWhenRatingsWereSkippedOrFailed() throws Exception {
+        MovieEntry fetched = movie("Arrival", 42L);
+        when(storage.load(USER_ID)).thenReturn(List.of());
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(fetched, false));
+        when(storage.saveIfTmdbIdAbsent(eq(USER_ID), any(MovieEntry.class)))
+                .thenAnswer(invocation -> new MovieStorageService.AddResult(invocation.getArgument(1), true));
+
+        controller.add(new MovieController.AddMovieRequest(42L));
+
+        assertThat(fetched.lastRefreshedAt).isNull();
+    }
+
+    @Test
+    void manualRefreshKeepsRefreshTimeWhenRatingsWereSkipped() throws Exception {
+        MovieEntry existing = movie("Existing", 42L);
+        existing.id = "movie-id";
+        existing.lastRefreshedAt = Instant.parse("2026-10-01T00:00:00Z");
+        MovieEntry fresh = movie("Updated", 42L);
+        when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(existing));
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(fresh, false));
+        when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
+            ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(existing);
+            return existing;
+        });
+
+        MovieEntry result = controller.refresh("movie-id");
+
+        assertThat(result.title).isEqualTo("Updated");
+        assertThat(result.lastRefreshedAt).isEqualTo(Instant.parse("2026-10-01T00:00:00Z"));
     }
 
     @Test

@@ -19,16 +19,19 @@ class MetadataServiceMovieTest {
         MovieEntry movie = new MovieEntry();
         movie.title = "Arrival";
         movie.tmdbId = 42L;
+        movie.imdbId = "tt1234567";
         when(tmdb.isConfigured()).thenReturn(true);
         when(tmdb.fetchMovieDetails(42L)).thenReturn(movie);
         when(omdb.isConfigured()).thenReturn(true);
         doThrow(new UpstreamServiceException("OMDb unavailable")).when(omdb).enrichMovie(movie);
 
-        MovieEntry result = new MetadataService(tmdb, tvmaze, omdb).fetchMovieDetails(42L);
+        MetadataService.MovieMetadataResult result =
+                new MetadataService(tmdb, tvmaze, omdb).fetchMovieDetails(42L);
 
-        assertThat(result).isSameAs(movie);
-        assertThat(result.imdbRating).isNull();
-        assertThat(result.rottenTomatoesScore).isNull();
+        assertThat(result.movie()).isSameAs(movie);
+        assertThat(result.ratingsRefreshed()).isFalse();
+        assertThat(result.movie().imdbRating).isNull();
+        assertThat(result.movie().rottenTomatoesScore).isNull();
         verify(omdb).enrichMovie(movie);
     }
 
@@ -42,9 +45,28 @@ class MetadataServiceMovieTest {
         when(tmdb.fetchMovieDetails(42L)).thenReturn(movie);
         when(omdb.isConfigured()).thenReturn(true);
 
-        MovieEntry result = new MetadataService(tmdb, tvmaze, omdb).fetchMovieDetails(42L, false);
+        MetadataService.MovieMetadataResult result =
+                new MetadataService(tmdb, tvmaze, omdb).fetchMovieDetails(42L, false);
 
-        assertThat(result).isSameAs(movie);
+        assertThat(result.movie()).isSameAs(movie);
+        assertThat(result.ratingsRefreshed()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(omdb);
+    }
+
+    @Test
+    void omdbNotApplicableIsReportedAsRatingsRefreshed() {
+        TmdbProvider tmdb = mock(TmdbProvider.class);
+        OmdbProvider omdb = mock(OmdbProvider.class);
+        MovieEntry movie = new MovieEntry();
+        movie.tmdbId = 42L;
+        when(tmdb.isConfigured()).thenReturn(true);
+        when(tmdb.fetchMovieDetails(42L)).thenReturn(movie);
+        when(omdb.isConfigured()).thenReturn(true);
+
+        MetadataService.MovieMetadataResult result =
+                new MetadataService(tmdb, mock(TvMazeProvider.class), omdb).fetchMovieDetails(42L, false);
+
+        assertThat(result.ratingsRefreshed()).isTrue();
         org.mockito.Mockito.verifyNoInteractions(omdb);
     }
 }

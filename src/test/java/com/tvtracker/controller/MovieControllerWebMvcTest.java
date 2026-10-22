@@ -1,10 +1,12 @@
 package com.tvtracker.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.config.SecurityConfig;
 import com.tvtracker.exception.GlobalExceptionHandler;
 import com.tvtracker.exception.MovieNotFoundException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.MetadataService.MovieMetadataResult;
 import com.tvtracker.storage.MovieStorageService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +43,9 @@ class MovieControllerWebMvcTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private ObjectMapper mapper;
+
     @MockitoBean
     private MovieStorageService storage;
 
@@ -51,16 +56,25 @@ class MovieControllerWebMvcTest {
     private ClientRegistrationRepository clientRegistrationRepository;
 
     @Test
-    void blankSearchReturnsBadRequest() throws Exception {
-        mockMvc.perform(get("/api/movies/search").param("q", " ").with(user(USER_ID)))
+    void unauthenticatedBlankSearchReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/movies/search").param("q", " "))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
     }
 
     @Test
-    void unauthenticatedMovieSearchReturns401() throws Exception {
+    void unauthenticatedMovieSearchReturns200() throws Exception {
+        when(metadata.searchMovies("Arrival")).thenReturn(List.of());
+
         mockMvc.perform(get("/api/movies/search").param("q", "Arrival"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void tooLongSearchReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/movies/search").param("q", "a".repeat(101)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -116,7 +130,7 @@ class MovieControllerWebMvcTest {
     void addSucceedsWithoutRatingsWhenOmdbIsDown() throws Exception {
         MovieEntry movie = movie("Arrival", 503L);
         when(storage.load(USER_ID)).thenReturn(List.of());
-        when(metadata.fetchMovieDetails(503L)).thenReturn(movie);
+        when(metadata.fetchMovieDetails(503L)).thenReturn(new MovieMetadataResult(movie, false));
         when(storage.saveIfTmdbIdAbsent(eq(USER_ID), any(MovieEntry.class)))
                 .thenReturn(new MovieStorageService.AddResult(movie, true));
 
@@ -136,7 +150,7 @@ class MovieControllerWebMvcTest {
     void addReturns201WithMovieAndCreatedShapeForNewMovie() throws Exception {
         MovieEntry movie = movie("Arrival", 42L);
         when(storage.load(USER_ID)).thenReturn(List.of());
-        when(metadata.fetchMovieDetails(42L)).thenReturn(movie);
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(movie, true));
         when(storage.saveIfTmdbIdAbsent(eq(USER_ID), any(MovieEntry.class)))
                 .thenReturn(new MovieStorageService.AddResult(movie, true));
 
@@ -173,6 +187,36 @@ class MovieControllerWebMvcTest {
     void unauthenticatedMovieListReturns401() throws Exception {
         mockMvc.perform(get("/api/movies"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unauthenticatedMovieMutationsReturn401() throws Exception {
+        mockMvc.perform(post("/api/movies")
+                        .contentType("application/json")
+                        .content("""
+                                {"tmdbId":42}
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(patch("/api/movies/movie-1/status")
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"WATCHED"}
+                                """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void lastRefreshedAtSerializesAsIsoTimestamp() throws Exception {
+        MovieEntry movie = movie("Arrival", 42L);
+        movie.lastRefreshedAt = java.time.Instant.parse("2026-10-22T10:00:00Z");
+
+        String json = mapper.writeValueAsString(movie);
+
+        org.assertj.core.api.Assertions.assertThat(json)
+                .contains("\"lastRefreshedAt\":\"2026-10-22T10:00:00Z\"");
+        org.assertj.core.api.Assertions.assertThat(mapper.readValue(json, MovieEntry.class).lastRefreshedAt)
+                .isEqualTo(movie.lastRefreshedAt);
     }
 
     private static MovieEntry movie(String title, long tmdbId) {

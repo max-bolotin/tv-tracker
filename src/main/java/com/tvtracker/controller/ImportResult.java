@@ -2,4 +2,4 @@ package com.tvtracker.controller;
 
 import java.util.List;
 
-public record ImportResult(int total, List<String> failedTitles) {}
+public record ImportResult(int showsImported, int moviesImported, List<String> failedTitles) {}

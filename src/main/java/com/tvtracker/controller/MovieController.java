@@ -6,6 +6,7 @@ import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieSearchResult;
 import com.tvtracker.model.MovieStatus;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.MovieMetadataMerger;
 import com.tvtracker.security.CurrentUserContext;
 import com.tvtracker.storage.MovieStorageService;
 import org.springframework.http.HttpStatus;
@@ -46,6 +47,9 @@ public class MovieController {
         if (q.isBlank()) {
             throw new InvalidMovieRequestException("Search query must not be blank");
         }
+        if (q.length() > 100) {
+            throw new InvalidMovieRequestException("Search query must not exceed 100 characters");
+        }
         return metadata.searchMovies(q);
     }
 
@@ -66,11 +70,15 @@ public class MovieController {
             return ResponseEntity.ok(result);
         }
 
-        MovieEntry fetched = metadata.fetchMovieDetails(request.tmdbId());
+        MetadataService.MovieMetadataResult resultWithMetadata = metadata.fetchMovieDetails(request.tmdbId());
+        MovieEntry fetched = resultWithMetadata.movie();
         fetched.id = null;
         fetched.tmdbId = request.tmdbId();
         fetched.status = MovieStatus.PLANNED;
         fetched.watchedDate = null;
+        if (resultWithMetadata.ratingsRefreshed()) {
+            fetched.lastRefreshedAt = clock.instant();
+        }
         result = storage.saveIfTmdbIdAbsent(userId, fetched);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result);
     }
@@ -147,28 +155,14 @@ public class MovieController {
     public MovieEntry refresh(@PathVariable String id) throws IOException {
         String userId = CurrentUserContext.currentUserId();
         MovieEntry existing = findMovie(userId, id);
-        MovieEntry fresh = metadata.fetchMovieDetails(existing.tmdbId);
+        MetadataService.MovieMetadataResult resultWithMetadata = metadata.fetchMovieDetails(existing.tmdbId);
+        MovieEntry fresh = resultWithMetadata.movie();
         return storage.update(userId, id, current -> {
-            applyMetadata(current, fresh);
-            current.lastRefreshedAt = clock.instant();
+            MovieMetadataMerger.merge(current, fresh);
+            if (resultWithMetadata.ratingsRefreshed()) {
+                current.lastRefreshedAt = clock.instant();
+            }
         });
-    }
-
-    private static void applyMetadata(MovieEntry current, MovieEntry fresh) {
-        current.tmdbId = fresh.tmdbId;
-        current.mediaType = fresh.mediaType;
-        current.imdbId = fresh.imdbId;
-        current.title = fresh.title;
-        current.releaseDate = fresh.releaseDate;
-        current.runtime = fresh.runtime;
-        current.poster = fresh.poster;
-        current.cast = fresh.cast;
-        if (fresh.imdbRating != null) {
-            current.imdbRating = fresh.imdbRating;
-        }
-        if (fresh.rottenTomatoesScore != null) {
-            current.rottenTomatoesScore = fresh.rottenTomatoesScore;
-        }
     }
 
     private MovieEntry findMovie(String id) throws IOException {

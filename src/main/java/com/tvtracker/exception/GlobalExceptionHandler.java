@@ -30,6 +30,13 @@ public class GlobalExceptionHandler {
                 .body(errorBody(ex.getMessage()));
     }
 
+    @ExceptionHandler(InvalidImportException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidImport(InvalidImportException ex) {
+        return ResponseEntity.badRequest()
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(errorBody(ex.getMessage()));
+    }
+
     @ExceptionHandler(UpstreamServiceException.class)
     public ResponseEntity<Map<String, Object>> handleUpstreamFailure(UpstreamServiceException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)

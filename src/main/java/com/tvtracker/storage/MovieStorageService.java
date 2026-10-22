@@ -56,6 +56,27 @@ public class MovieStorageService {
         return movies;
     }
 
+    public synchronized ImportFileSnapshot snapshotForImport(String userId) throws IOException {
+        Path file = resolveUserFile(userId);
+        return new ImportFileSnapshot(file, Files.exists(file) ? Files.readAllBytes(file) : null);
+    }
+
+    public synchronized void replaceForImport(String userId, List<MovieEntry> movies) throws IOException {
+        Path file = resolveUserFile(userId);
+        backupBeforeImport(file);
+        writeMoviesToFile(file, movies);
+    }
+
+    public synchronized void restoreAfterFailedImport(ImportFileSnapshot snapshot) throws IOException {
+        if (snapshot.content() == null) {
+            Files.deleteIfExists(snapshot.file());
+        } else {
+            writeBytesAtomically(snapshot.file(), snapshot.content());
+        }
+    }
+
+    public record ImportFileSnapshot(Path file, byte[] content) {}
+
     public synchronized Optional<MovieEntry> findById(String id) throws IOException {
         return findById("default", id);
     }
@@ -200,6 +221,31 @@ public class MovieStorageService {
         Files.createFile(tempFile);
         try {
             mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), movies);
+            try {
+                Files.move(tempFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    private void backupBeforeImport(Path file) throws IOException {
+        if (Files.exists(file)) {
+            Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"),
+                    StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            Files.deleteIfExists(file.resolveSibling(file.getFileName() + ".bak"));
+        }
+    }
+
+    private void writeBytesAtomically(Path file, byte[] content) throws IOException {
+        Path parent = file.getParent();
+        Files.createDirectories(parent);
+        Path tempFile = parent.resolve(file.getFileName() + "." + UUID.randomUUID() + ".tmp");
+        try {
+            Files.write(tempFile, content);
             try {
                 Files.move(tempFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException e) {
