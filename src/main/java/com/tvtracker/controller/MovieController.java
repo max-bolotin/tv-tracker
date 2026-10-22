@@ -149,21 +149,26 @@ public class MovieController {
         MovieEntry existing = findMovie(userId, id);
         MovieEntry fresh = metadata.fetchMovieDetails(existing.tmdbId);
         return storage.update(userId, id, current -> {
-            current.tmdbId = fresh.tmdbId;
-            current.mediaType = fresh.mediaType;
-            current.imdbId = fresh.imdbId;
-            current.title = fresh.title;
-            current.releaseDate = fresh.releaseDate;
-            current.runtime = fresh.runtime;
-            current.poster = fresh.poster;
-            current.cast = fresh.cast;
-            if (fresh.imdbRating != null) {
-                current.imdbRating = fresh.imdbRating;
-            }
-            if (fresh.rottenTomatoesScore != null) {
-                current.rottenTomatoesScore = fresh.rottenTomatoesScore;
-            }
+            applyMetadata(current, fresh);
+            current.lastRefreshedAt = clock.instant();
         });
+    }
+
+    private static void applyMetadata(MovieEntry current, MovieEntry fresh) {
+        current.tmdbId = fresh.tmdbId;
+        current.mediaType = fresh.mediaType;
+        current.imdbId = fresh.imdbId;
+        current.title = fresh.title;
+        current.releaseDate = fresh.releaseDate;
+        current.runtime = fresh.runtime;
+        current.poster = fresh.poster;
+        current.cast = fresh.cast;
+        if (fresh.imdbRating != null) {
+            current.imdbRating = fresh.imdbRating;
+        }
+        if (fresh.rottenTomatoesScore != null) {
+            current.rottenTomatoesScore = fresh.rottenTomatoesScore;
+        }
     }
 
     private MovieEntry findMovie(String id) throws IOException {

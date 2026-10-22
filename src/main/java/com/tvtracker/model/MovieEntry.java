@@ -3,6 +3,7 @@ package com.tvtracker.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +24,7 @@ public class MovieEntry {
     public Double personalRating;
     public MovieStatus status = MovieStatus.PLANNED;
     public String watchedDate;
+    public Instant lastRefreshedAt;
 
     public MovieEntry() {}
 

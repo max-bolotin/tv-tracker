@@ -3,7 +3,6 @@ package com.tvtracker.controller;
 import com.tvtracker.config.SecurityConfig;
 import com.tvtracker.exception.GlobalExceptionHandler;
 import com.tvtracker.exception.MovieNotFoundException;
-import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.storage.MovieStorageService;
@@ -53,9 +52,15 @@ class MovieControllerWebMvcTest {
 
     @Test
     void blankSearchReturnsBadRequest() throws Exception {
-        mockMvc.perform(get("/api/movies/search").param("q", " "))
+        mockMvc.perform(get("/api/movies/search").param("q", " ").with(user(USER_ID)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void unauthenticatedMovieSearchReturns401() throws Exception {
+        mockMvc.perform(get("/api/movies/search").param("q", "Arrival"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -87,11 +92,11 @@ class MovieControllerWebMvcTest {
     }
 
     @Test
-    void tmdbMovieNotFoundReturns404AndUpstreamOutageReturns502() throws Exception {
+    void tmdbMovieNotFoundReturns404AndSearchUpstreamOutageReturns502() throws Exception {
         when(storage.load(USER_ID)).thenReturn(List.of());
-        when(metadata.fetchMovieDetails(404L)).thenThrow(new MovieNotFoundException("TMDB movie not found: 404"));
-        when(metadata.searchMovies("outage")).thenThrow(new UpstreamServiceException("TMDB movie search failed"));
-        when(metadata.fetchMovieDetails(503L)).thenThrow(new UpstreamServiceException("OMDb movie enrichment failed"));
+        when(metadata.fetchMovieDetails(404L)).thenThrow(new MovieNotFoundException("404"));
+        when(metadata.searchMovies("outage")).thenThrow(
+                new com.tvtracker.exception.UpstreamServiceException("TMDB movie search failed"));
 
         mockMvc.perform(post("/api/movies")
                         .with(user(USER_ID))
@@ -99,10 +104,21 @@ class MovieControllerWebMvcTest {
                         .content("""
                                 {"tmdbId":404}
                                 """))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Movie not found: 404"));
 
-        mockMvc.perform(get("/api/movies/search").param("q", "outage"))
+        mockMvc.perform(get("/api/movies/search").param("q", "outage").with(user(USER_ID)))
                 .andExpect(status().isBadGateway());
+
+    }
+
+    @Test
+    void addSucceedsWithoutRatingsWhenOmdbIsDown() throws Exception {
+        MovieEntry movie = movie("Arrival", 503L);
+        when(storage.load(USER_ID)).thenReturn(List.of());
+        when(metadata.fetchMovieDetails(503L)).thenReturn(movie);
+        when(storage.saveIfTmdbIdAbsent(eq(USER_ID), any(MovieEntry.class)))
+                .thenReturn(new MovieStorageService.AddResult(movie, true));
 
         mockMvc.perform(post("/api/movies")
                         .with(user(USER_ID))
@@ -110,7 +126,10 @@ class MovieControllerWebMvcTest {
                         .content("""
                                 {"tmdbId":503}
                                 """))
-                .andExpect(status().isBadGateway());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.created").value(true))
+                .andExpect(jsonPath("$.movie.imdbRating").doesNotExist())
+                .andExpect(jsonPath("$.movie.rottenTomatoesScore").doesNotExist());
     }
 
     @Test

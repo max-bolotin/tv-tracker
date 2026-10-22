@@ -63,12 +63,21 @@ public class MetadataService {
   }
 
   public MovieEntry fetchMovieDetails(long tmdbId) {
+    return fetchMovieDetails(tmdbId, true);
+  }
+
+  public MovieEntry fetchMovieDetails(long tmdbId, boolean enrichWithOmdb) {
     if (!tmdb.isConfigured()) {
       throw new UpstreamServiceException("TMDB is not configured");
     }
     MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
-    if (omdb != null && omdb.isConfigured()) {
-      omdb.enrichMovie(movie);
+    if (enrichWithOmdb && omdb != null && omdb.isConfigured()) {
+      try {
+        omdb.enrichMovie(movie);
+      } catch (UpstreamServiceException e) {
+        log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
+            movie.title, e.getMessage());
+      }
     }
     return movie;
   }

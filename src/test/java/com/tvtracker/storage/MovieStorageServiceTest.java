@@ -21,6 +21,7 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -207,6 +208,20 @@ class MovieStorageServiceTest {
         storage.findById("alice", "stable");
 
         assertEquals(originalJson, Files.readString(movieFile));
+    }
+
+    @Test
+    void legacyMovieWithoutLastRefreshedAtLoadsWithNull() throws Exception {
+        Path moviesRoot = tempDir.resolve("movies-data");
+        Files.createDirectories(moviesRoot);
+        Files.writeString(moviesRoot.resolve("alice.json"),
+                "[{\"id\":\"legacy\",\"tmdbId\":42,\"title\":\"Legacy movie\"}]");
+        MovieStorageService storage = createService(tempDir.resolve("users"), moviesRoot.toString());
+
+        MovieEntry loaded = storage.load("alice").getFirst();
+
+        assertEquals("legacy", loaded.id);
+        assertNull(loaded.lastRefreshedAt);
     }
 
     @Test

@@ -90,7 +90,7 @@ public class TmdbProvider implements MetadataProvider {
                     .toUriString();
             JsonNode root = getMovie(url, tmdbId);
             if (root.path("id").asLong(-1) != tmdbId) {
-                throw new MovieNotFoundException("TMDB movie not found: " + tmdbId);
+                throw new MovieNotFoundException(String.valueOf(tmdbId));
             }
 
             MovieEntry movie = new MovieEntry();
@@ -350,7 +350,7 @@ public class TmdbProvider implements MetadataProvider {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() == 404) {
-            throw new MovieNotFoundException("TMDB movie not found: " + tmdbId);
+            throw new MovieNotFoundException(String.valueOf(tmdbId));
         }
         if (resp.statusCode() != 200) {
             throw new UpstreamServiceException("TMDB movie request failed with HTTP " + resp.statusCode());

@@ -68,6 +68,11 @@ public class MovieStorageService {
 
     public synchronized MovieEntry update(String userId, String id, Consumer<MovieEntry> mutator)
             throws IOException {
+        return update(userId, id, mutator, true);
+    }
+
+    public synchronized MovieEntry update(String userId, String id, Consumer<MovieEntry> mutator,
+                                          boolean broadcastChange) throws IOException {
         Objects.requireNonNull(mutator, "mutator");
         List<MovieEntry> movies = load(userId);
         MovieEntry movie = movies.stream()
@@ -76,7 +81,9 @@ public class MovieStorageService {
                 .orElseThrow(() -> new MovieNotFoundException(id));
         mutator.accept(movie);
         writeMoviesToFile(resolveUserFile(userId), movies);
-        sse.broadcastMoviesChanged();
+        if (broadcastChange) {
+            sse.broadcastMoviesChanged();
+        }
         return movie;
     }
 

@@ -175,6 +175,7 @@ class MovieControllerTest {
         assertThat(result.personalRating).isEqualTo(6.5);
         assertThat(result.imdbRating).isEqualTo("8.2");
         assertThat(result.rottenTomatoesScore).isEqualTo("92%");
+        assertThat(result.lastRefreshedAt).isEqualTo(Instant.parse("2026-10-22T00:00:00Z"));
         assertThat(refreshed.id).isNull();
     }
 
