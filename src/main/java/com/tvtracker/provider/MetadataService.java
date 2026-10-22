@@ -72,14 +72,14 @@ public class MetadataService {
     }
     MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
     if (!isMovieOmdbEnrichmentApplicable(movie)) {
-      return new MovieMetadataResult(movie, true);
+      return new MovieMetadataResult(movie, true, false);
     }
     if (!allowOmdb) {
-      return new MovieMetadataResult(movie, false);
+      return new MovieMetadataResult(movie, false, false);
     }
     try {
       omdb.enrichMovie(movie);
-      return new MovieMetadataResult(movie, true);
+      return new MovieMetadataResult(movie, true, true);
     } catch (UpstreamServiceException e) {
       if (omdb.isBackoffActive()) {
         log.debug("OMDb ratings for movie '{}' deferred while quota backoff is active", movie.title);
@@ -87,7 +87,10 @@ public class MetadataService {
         log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
             movie.title, e.getMessage());
       }
-      return new MovieMetadataResult(movie, false);
+      boolean requestAttempted = e instanceof OmdbProvider.MovieEnrichmentException enrichmentException
+          ? enrichmentException.requestAttempted()
+          : !omdb.isBackoffActive();
+      return new MovieMetadataResult(movie, false, requestAttempted);
     }
   }
 
@@ -96,7 +99,12 @@ public class MetadataService {
         && omdb != null && omdb.isConfigured();
   }
 
-  public record MovieMetadataResult(MovieEntry movie, boolean ratingsRefreshed) {}
+  public record MovieMetadataResult(
+      MovieEntry movie, boolean ratingsRefreshed, boolean omdbRequestAttempted) {
+    public MovieMetadataResult(MovieEntry movie, boolean ratingsRefreshed) {
+      this(movie, ratingsRefreshed, ratingsRefreshed);
+    }
+  }
 
   public void hydrateMissingTmdbId(TrackedShow show) {
     if (show == null || show.tmdbId != null || show.title == null || show.title.isBlank()) {

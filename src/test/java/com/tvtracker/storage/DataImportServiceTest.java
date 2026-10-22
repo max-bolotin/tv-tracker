@@ -105,6 +105,29 @@ class DataImportServiceTest {
   }
 
   @Test
+  void importRegeneratesAnExistingIdWhenItWouldIdentifyADifferentMovie() throws Exception {
+    MovieEntry existing = movie(7L, "Existing movie");
+    existing.id = "stable-id";
+    movieStorage.save("alice", existing);
+
+    importJson("""
+        {"version":2,"movies":[{"id":"stable-id","tmdbId":99,"title":"Replacement movie"}]}
+        """, "alice");
+
+    MovieEntry imported = movieStorage.load("alice").getFirst();
+    assertEquals(99L, imported.tmdbId);
+    assertTrue(!"stable-id".equals(imported.id));
+    assertEquals(imported.id, UUID.fromString(imported.id).toString());
+  }
+
+  @Test
+  void nullMovieStatusUsesThePlannedDefault() throws Exception {
+    MovieEntry movie = mapper.readValue("{\"status\":null}", MovieEntry.class);
+
+    assertEquals(MovieStatus.PLANNED, movie.status);
+  }
+
+  @Test
   void exportedV2PayloadRoundTripsBothShowsAndMovies() throws Exception {
     TrackedShow originalShow = show("Arrival: The Series", WatchStatus.WATCHING_NOW);
     originalShow.seasons = List.of();

@@ -67,4 +67,44 @@ describe('MovieLibrary', () => {
     expect(screen.getByText('No watched movies.')).toBeInTheDocument();
     expect(changes.map(movie => movie.status)).toEqual(['WATCHED', 'PLANNED']);
   });
+
+  it('reorders movies only within their current section', () => {
+    const movies: MovieEntry[] = [
+      { id: 'planned-1', tmdbId: 1, title: 'Planned One', status: 'PLANNED' },
+      { id: 'watched-1', tmdbId: 2, title: 'Watched One', status: 'WATCHED' },
+      { id: 'planned-2', tmdbId: 3, title: 'Planned Two', status: 'PLANNED' },
+      { id: 'watched-2', tmdbId: 4, title: 'Watched Two', status: 'WATCHED' },
+    ];
+    const onReorder = vi.fn();
+    const { container } = render(
+      <MovieLibrary
+        movies={movies}
+        onSelect={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+        onReorder={onReorder}
+      />,
+    );
+    const plannedOne = screen.getByTestId('movie-card-planned-1').parentElement!;
+    const plannedTwo = screen.getByTestId('movie-card-planned-2').parentElement!;
+    const watchedOne = screen.getByTestId('movie-card-watched-1').parentElement!;
+
+    fireEvent.dragStart(plannedTwo);
+    fireEvent.drop(plannedOne);
+
+    expect(onReorder).toHaveBeenCalledWith([
+      movies[2],
+      movies[1],
+      movies[0],
+      movies[3],
+    ]);
+
+    onReorder.mockClear();
+    fireEvent.dragStart(plannedOne);
+    fireEvent.drop(watchedOne);
+
+    expect(onReorder).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('.drag-wrapper')).toHaveLength(4);
+  });
 });

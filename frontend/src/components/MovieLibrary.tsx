@@ -26,15 +26,22 @@ export function MovieLibrary({ movies, onSelect, onStatusChange, onDelete, onRef
           onDragStart={() => { draggedId.current = movie.id; }}
           onDragOver={event => event.preventDefault()}
           onDrop={() => {
-            if (!draggedId.current || draggedId.current === movie.id || !onReorder) return;
-            const start = movies.findIndex(entry => entry.id === draggedId.current);
-            const end = movies.findIndex(entry => entry.id === movie.id);
-            const reordered = [...movies];
-            const [moved] = reordered.splice(start, 1);
-            reordered.splice(end, 0, moved);
-            onReorder(reordered);
+            const draggedMovieId = draggedId.current;
             draggedId.current = null;
+            if (!draggedMovieId || draggedMovieId === movie.id || !onReorder) return;
+            const start = items.findIndex(entry => entry.id === draggedMovieId);
+            const end = items.findIndex(entry => entry.id === movie.id);
+            if (start < 0 || end < 0) return;
+
+            const reorderedSection = [...items];
+            const [moved] = reorderedSection.splice(start, 1);
+            reorderedSection.splice(end, 0, moved);
+            let sectionIndex = 0;
+            onReorder(movies.map(entry => entry.status === movie.status
+              ? reorderedSection[sectionIndex++]
+              : entry));
           }}
+          onDragEnd={() => { draggedId.current = null; }}
         >
           <MovieCard
             movie={movie}

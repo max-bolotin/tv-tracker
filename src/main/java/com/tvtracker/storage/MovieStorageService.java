@@ -119,6 +119,11 @@ public class MovieStorageService {
         }
 
         List<MovieEntry> movies = load(userId);
+        return saveToList(userId, movie, movies);
+    }
+
+    private MovieEntry saveToList(String userId, MovieEntry movie, List<MovieEntry> movies)
+            throws IOException {
         int existingIndex = -1;
         for (int i = 0; i < movies.size(); i++) {
             if (Objects.equals(movies.get(i).id, movie.id)) {
@@ -140,12 +145,13 @@ public class MovieStorageService {
     public synchronized AddResult saveIfTmdbIdAbsent(String userId, MovieEntry movie) throws IOException {
         Objects.requireNonNull(movie, "movie");
         Objects.requireNonNull(movie.tmdbId, "movie.tmdbId");
-        Optional<MovieEntry> existing = load(userId).stream()
+        List<MovieEntry> movies = load(userId);
+        Optional<MovieEntry> existing = movies.stream()
                 .filter(candidate -> Objects.equals(candidate.tmdbId, movie.tmdbId))
                 .findFirst();
         return existing.isPresent()
                 ? new AddResult(existing.get(), false)
-                : new AddResult(save(userId, movie), true);
+                : new AddResult(saveToList(userId, movie, movies), true);
     }
 
     public synchronized AddResult saveIfTmdbIdAbsent(MovieEntry movie) throws IOException {

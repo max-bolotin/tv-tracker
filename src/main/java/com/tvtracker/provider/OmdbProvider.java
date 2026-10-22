@@ -20,6 +20,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
@@ -98,9 +99,7 @@ public class OmdbProvider {
         if (!isConfigured() || movie.imdbId == null || movie.imdbId.isBlank()) {
             return;
         }
-        if (isBackoffActive()) {
-            throw new UpstreamServiceException("OMDb quota backoff is active");
-        }
+        AtomicBoolean requestAttempted = new AtomicBoolean();
         try {
             String url = UriComponentsBuilder.fromUriString(baseUrl)
                     .queryParam("apikey", apiKey)
@@ -109,7 +108,7 @@ public class OmdbProvider {
                     .build()
                     .encode()
                     .toUriString();
-            JsonNode root = get(url);
+            JsonNode root = get(url, requestAttempted);
             if (!"True".equals(root.path("Response").asText())) {
                 log.debug("OMDb no result for movie imdbId={}", movie.imdbId);
                 return;
@@ -119,7 +118,24 @@ public class OmdbProvider {
             log.debug("OMDb enriched movie '{}': imdb={} rt={}",
                     movie.title, movie.imdbRating, movie.rottenTomatoesScore);
         } catch (Exception e) {
-            throw new UpstreamServiceException("OMDb movie enrichment failed for '" + movie.title + "'", e);
+            boolean attempted = e instanceof OmdbBackoffException backoffException
+                    ? backoffException.requestAttempted
+                    : requestAttempted.get();
+            throw new MovieEnrichmentException(
+                    "OMDb movie enrichment failed for '" + movie.title + "'", attempted, e);
+        }
+    }
+
+    public static class MovieEnrichmentException extends UpstreamServiceException {
+        private final boolean requestAttempted;
+
+        private MovieEnrichmentException(String message, boolean requestAttempted, Throwable cause) {
+            super(message, cause);
+            this.requestAttempted = requestAttempted;
+        }
+
+        public boolean requestAttempted() {
+            return requestAttempted;
         }
     }
 
@@ -180,16 +196,23 @@ public class OmdbProvider {
     }
 
     private JsonNode get(String url) throws Exception {
+        return get(url, null);
+    }
+
+    private JsonNode get(String url, AtomicBoolean requestAttempted) throws Exception {
         if (isBackoffActive()) {
-            throw new OmdbBackoffException();
+            throw new OmdbBackoffException(false);
         }
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
+        if (requestAttempted != null) {
+            requestAttempted.set(true);
+        }
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         JsonNode body = mapper.readTree(resp.body());
         String error = body.path("Error").asText("");
         if (error.contains("Request limit reached!")) {
             startBackoff();
-            throw new OmdbBackoffException();
+            throw new OmdbBackoffException(true);
         }
         if (resp.statusCode() != 200) {
             if (resp.statusCode() == 401) {
@@ -215,7 +238,13 @@ public class OmdbProvider {
         }
     }
 
-    private static final class OmdbBackoffException extends RuntimeException {}
+    private static final class OmdbBackoffException extends RuntimeException {
+        private final boolean requestAttempted;
+
+        private OmdbBackoffException(boolean requestAttempted) {
+            this.requestAttempted = requestAttempted;
+        }
+    }
 
     private static final class OmdbAuthenticationException extends RuntimeException {
         private OmdbAuthenticationException(String message) {

@@ -80,6 +80,16 @@ API Endpoints
 | PATCH | `/api/shows/{id}/seasons/{s}` | Toggle entire season `{ watched }` |
 | GET | `/api/shows/search?q=` | Search external APIs |
 | GET | `/api/shows/popular?limit={n}` | Get up to `n` popular/trending shows from TMDB (unauthenticated) |
+| GET | `/api/movies/search?q=` | Search movies in TMDB (unauthenticated) |
+| GET | `/api/movies/details?tmdbId=` | Get movie details for a search preview (unauthenticated) |
+| GET | `/api/movies` | List tracked movies (optional `?status=PLANNED` or `?status=WATCHED`) |
+| GET | `/api/movies/{id}` | Get a tracked movie |
+| POST | `/api/movies` | Track movie `{ tmdbId }` |
+| PATCH | `/api/movies/{id}/status` | Update movie status `{ status }` |
+| PATCH | `/api/movies/{id}/rating` | Set personal rating `{ personalRating }` |
+| DELETE | `/api/movies/{id}` | Remove a tracked movie |
+| PUT | `/api/movies/reorder` | Reorder tracked movies (JSON array of IDs) |
+| POST | `/api/movies/{id}/refresh` | Refresh a movie's metadata |
 | GET | `/api/data/export` | Download JSON backup |
 | POST | `/api/data/import` | Upload JSON backup (multipart) |
 

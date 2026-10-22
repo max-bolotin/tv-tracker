@@ -56,8 +56,7 @@ export function MovieCard({ movie, onSelect, onStatusChange, onDelete, onRefresh
         className="movie-seen-toggle"
         onClick={event => {
           event.stopPropagation();
-          onStatusChange({...movie, status: watched ? 'PLANNED' : 'WATCHED',
-            watchedDate: watched ? undefined : new Date().toISOString().slice(0, 10)});
+          onStatusChange({...movie, status: watched ? 'PLANNED' : 'WATCHED'});
         }}
         aria-label={watched ? `Unmark ${movie.title} as watched` : `Mark ${movie.title} as watched`}
       >

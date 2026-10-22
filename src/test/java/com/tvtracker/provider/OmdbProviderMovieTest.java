@@ -125,9 +125,16 @@ class OmdbProviderMovieTest {
         OmdbProvider provider = provider(Clock.fixed(now.get(), ZoneId.of("UTC")));
         MovieEntry movie = movie();
 
-        org.junit.jupiter.api.Assertions.assertThrows(UpstreamServiceException.class,
-                () -> provider.enrichMovie(movie));
+        UpstreamServiceException quotaFailure = org.junit.jupiter.api.Assertions.assertThrows(
+                UpstreamServiceException.class, () -> provider.enrichMovie(movie));
+        assertTrue(quotaFailure instanceof OmdbProvider.MovieEnrichmentException);
+        assertTrue(((OmdbProvider.MovieEnrichmentException) quotaFailure).requestAttempted());
         assertTrue(provider.isBackoffActive());
+        assertEquals(1, requestCount.get());
+
+        UpstreamServiceException suppressedFailure = org.junit.jupiter.api.Assertions.assertThrows(
+                UpstreamServiceException.class, () -> provider.enrichMovie(movie));
+        assertFalse(((OmdbProvider.MovieEnrichmentException) suppressedFailure).requestAttempted());
         assertEquals(1, requestCount.get());
 
         TrackedShow show = new TrackedShow();

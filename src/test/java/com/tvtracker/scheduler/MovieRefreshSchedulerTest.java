@@ -170,6 +170,26 @@ class MovieRefreshSchedulerTest {
         verify(sse).broadcastMoviesChanged();
     }
 
+    @Test
+    void failedOmdbAttemptThatWasSuppressedDoesNotConsumeTheRunLimit() throws Exception {
+        MovieEntry first = movie(21L, null);
+        first.id = "first";
+        MovieEntry second = movie(22L, null);
+        second.id = "second";
+        when(showStorage.listUserIds()).thenReturn(List.of("alice"));
+        when(movieStorage.load("alice")).thenReturn(List.of(first, second));
+        MovieEntry freshFirst = movie(21L, "2026-10-01");
+        MovieEntry freshSecond = movie(22L, "2026-10-01");
+        when(metadata.fetchMovieDetails(21L, true)).thenReturn(new MovieMetadataResult(freshFirst, false, false));
+        when(metadata.fetchMovieDetails(22L, true)).thenReturn(new MovieMetadataResult(freshSecond, true, true));
+        stubUpdateMutatesEntry();
+
+        scheduler.doRefresh();
+
+        verify(metadata).fetchMovieDetails(21L, true);
+        verify(metadata).fetchMovieDetails(22L, true);
+    }
+
     private void stubUpdateMutatesEntry() throws Exception {
         doAnswer(invocation -> {
             MovieEntry current = findMovie(invocation.getArgument(0), invocation.getArgument(1));

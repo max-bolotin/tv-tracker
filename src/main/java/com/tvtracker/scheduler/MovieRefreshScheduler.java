@@ -95,7 +95,7 @@ public class MovieRefreshScheduler {
             try {
                 boolean enrichWithOmdb = omdbCalls < omdbMaxCallsPerRun;
                 result = metadata.fetchMovieDetails(tmdbId, enrichWithOmdb);
-                if (enrichWithOmdb && metadata.isMovieOmdbEnrichmentApplicable(result.movie())) {
+                if (result.omdbRequestAttempted()) {
                     omdbCalls++;
                 }
                 refreshedMovies++;

@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -100,6 +101,9 @@ public class DataImportService {
         synchronized (userLock) {
             MovieStorageService.ImportFileSnapshot movieSnapshot =
                     moviesPresent ? movieStorage.snapshotForImport(userId) : null;
+            if (moviesPresent) {
+                preserveMovieIdsForDifferentEntries(movies, movieStorage.load(userId));
+            }
             List<TrackedShow> showsToWrite = null;
             if (showsPresent) {
                 List<TrackedShow> current = showStorage.loadForImport(userId);
@@ -110,6 +114,7 @@ public class DataImportService {
 
             boolean movieWriteAttempted = false;
             try {
+                // Keep movies first: if the show write fails, the movie snapshot is rolled back below.
                 if (moviesPresent) {
                     movieWriteAttempted = true;
                     movieStorage.replaceForImport(userId, movies);
@@ -137,6 +142,31 @@ public class DataImportService {
         }
         return new ImportSummary(showsPresent ? importedShows.size() : 0,
                 moviesPresent ? movies.size() : 0, resolved.stubTitles());
+    }
+
+    private static void preserveMovieIdsForDifferentEntries(
+            List<MovieEntry> importedMovies, List<MovieEntry> storedMovies) {
+        Map<String, Long> storedTmdbIdsByMovieId = new HashMap<>();
+        for (MovieEntry storedMovie : storedMovies) {
+            if (storedMovie.id != null) {
+                storedTmdbIdsByMovieId.put(storedMovie.id, storedMovie.tmdbId);
+            }
+        }
+
+        Set<String> importedIds = new HashSet<>();
+        importedMovies.forEach(movie -> importedIds.add(movie.id));
+        for (MovieEntry importedMovie : importedMovies) {
+            if (!storedTmdbIdsByMovieId.containsKey(importedMovie.id)
+                    || Objects.equals(storedTmdbIdsByMovieId.get(importedMovie.id), importedMovie.tmdbId)) {
+                continue;
+            }
+
+            importedIds.remove(importedMovie.id);
+            do {
+                importedMovie.id = UUID.randomUUID().toString();
+            } while (storedTmdbIdsByMovieId.containsKey(importedMovie.id)
+                    || !importedIds.add(importedMovie.id));
+        }
     }
 
     private static int validateVersion(JsonNode root) {

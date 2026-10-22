@@ -33,4 +33,9 @@ public class MovieEntry {
     public void setMediaType(MediaType mediaType) {
         this.mediaType = mediaType;
     }
+
+    @JsonSetter(value = "status", nulls = Nulls.SKIP)
+    public void setStatus(MovieStatus status) {
+        this.status = status;
+    }
 }

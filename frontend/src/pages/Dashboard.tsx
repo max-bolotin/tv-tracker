@@ -335,10 +335,6 @@ export function Dashboard() {
     }
   };
 
-  const handleAddMovie = async (result: MovieSearchResult) => {
-    await handleTrackMovie(result);
-  };
-
   const handlePreviewMovie = async (result: MovieSearchResult) => {
     const trackedMovie = movies.find(movie => movie.tmdbId === result.tmdbId);
     if (trackedMovie) {
@@ -561,10 +557,7 @@ export function Dashboard() {
       const result = await api.importData(file);
       console.info('[Import] complete:', result);
       const importedMessage = `Imported ${result.showsImported} shows and ${result.moviesImported} movies.`;
-      const failuresMessage = result.failedTitles.length > 0
-        ? ` Could not fetch metadata for: ${result.failedTitles.join(', ')}`
-        : '';
-      sessionStorage.setItem('importToast', importedMessage + failuresMessage);
+      sessionStorage.setItem('importToast', importedMessage);
       window.location.reload();
     } catch (err) {
       console.error('[Import] failed:', err);
@@ -772,7 +765,7 @@ export function Dashboard() {
             onPreview={handlePreview}
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
             mode={tab === 'MOVIES' ? 'movies' : 'shows'}
-            onAddMovie={handleAddMovie}
+            onAddMovie={handleTrackMovie}
             onPreviewMovie={handlePreviewMovie}
             trackedMovies={movies}
           />
@@ -903,7 +896,7 @@ export function Dashboard() {
             onPreview={handlePreview}
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
             mode={tab === 'MOVIES' ? 'movies' : 'shows'}
-            onAddMovie={handleAddMovie}
+            onAddMovie={handleTrackMovie}
             onPreviewMovie={handlePreviewMovie}
             trackedMovies={movies}
           />
@@ -1028,7 +1021,7 @@ export function Dashboard() {
           onPreview={handlePreview}
           onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
           mode={tab === 'MOVIES' ? 'movies' : 'shows'}
-          onAddMovie={handleAddMovie}
+          onAddMovie={handleTrackMovie}
           onPreviewMovie={handlePreviewMovie}
           trackedMovies={movies}
         />
@@ -1141,7 +1134,7 @@ export function Dashboard() {
         {importing && (
             <div className="import-overlay">
               <div className="import-spinner"/>
-              <p>Importing & fetching metadata…</p>
+              <p>Importing…</p>
             </div>
         )}
       </div>
