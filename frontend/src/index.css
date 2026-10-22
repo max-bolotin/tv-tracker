@@ -519,6 +519,9 @@ body {
 }
 .show-card:hover .delete-btn { display: flex; }
 .delete-btn:hover { background: #cc3333; color: white; }
+@media (hover: none) {
+  .show-card .delete-btn { display: flex; }
+}
 .movie-card { padding-bottom: 2.3rem; }
 .movie-status-planned { background: #dbeafe; color: #1e40af; }
 .movie-status-watched { background: #dcfce7; color: #166534; }

@@ -68,6 +68,23 @@ describe('MovieLibrary', () => {
     expect(changes.map(movie => movie.status)).toEqual(['WATCHED', 'PLANNED']);
   });
 
+  it('allows removing the last movie in a section', () => {
+    const onDelete = vi.fn();
+    render(
+      <MovieLibrary
+        movies={[plannedMovie, watchedMovie]}
+        onSelect={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDelete={onDelete}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Watched film' }));
+
+    expect(onDelete).toHaveBeenCalledWith(watchedMovie);
+  });
+
   it('reorders movies only within their current section', () => {
     const movies: MovieEntry[] = [
       { id: 'planned-1', tmdbId: 1, title: 'Planned One', status: 'PLANNED' },

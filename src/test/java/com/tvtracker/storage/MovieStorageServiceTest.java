@@ -20,6 +20,7 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -88,6 +89,51 @@ class MovieStorageServiceTest {
         assertEquals(List.of("second", "first"),
                 storage.load("alice").stream().map(movie -> movie.id).toList());
         assertEquals("Updated first", storage.findById("alice", "first").orElseThrow().title);
+    }
+
+    @Test
+    void saveIfTmdbIdAbsentAssignsDistinctIdsAndAllowsDeletingEitherMovie() throws Exception {
+        MovieStorageService storage = createService(tempDir.resolve("users"));
+        MovieEntry first = movie("First");
+        first.tmdbId = 101L;
+        MovieEntry second = movie("Second");
+        second.tmdbId = 202L;
+
+        MovieStorageService.AddResult firstResult = storage.saveIfTmdbIdAbsent("alice", first);
+        MovieStorageService.AddResult secondResult = storage.saveIfTmdbIdAbsent("alice", second);
+        MovieStorageService.AddResult duplicateResult =
+                storage.saveIfTmdbIdAbsent("alice", movieWithTmdbId("First duplicate", 101L));
+
+        assertTrue(firstResult.created());
+        assertTrue(secondResult.created());
+        assertNotNull(firstResult.movie().id);
+        assertNotNull(secondResult.movie().id);
+        assertNotEquals(firstResult.movie().id, secondResult.movie().id);
+        assertEquals(UUID.fromString(firstResult.movie().id).toString(), firstResult.movie().id);
+        assertFalse(duplicateResult.created());
+        assertEquals(firstResult.movie().id, duplicateResult.movie().id);
+        assertEquals(2, storage.load("alice").size());
+        assertTrue(storage.delete("alice", secondResult.movie().id));
+        assertEquals(List.of(firstResult.movie().id),
+                storage.load("alice").stream().map(entry -> entry.id).toList());
+    }
+
+    @Test
+    void legacyMissingIdsAreStableWithoutWritingDuringRead() throws Exception {
+        MovieStorageService storage = createService(tempDir.resolve("users"));
+        Path movieFile = tempDir.resolve("movies").resolve("alice.json");
+        Files.createDirectories(movieFile.getParent());
+        String legacyJson = "[{\"id\":null,\"tmdbId\":303,\"title\":\"Legacy\",\"status\":\"PLANNED\"}]";
+        Files.writeString(movieFile, legacyJson);
+
+        String firstReadId = storage.load("alice").getFirst().id;
+        String secondReadId = storage.load("alice").getFirst().id;
+
+        assertEquals(firstReadId, secondReadId);
+        assertEquals(UUID.fromString(firstReadId).toString(), firstReadId);
+        assertEquals(legacyJson, Files.readString(movieFile));
+        assertTrue(storage.delete("alice", firstReadId));
+        assertTrue(storage.load("alice").isEmpty());
     }
 
     @Test
@@ -307,6 +353,12 @@ class MovieStorageServiceTest {
     private static MovieEntry movie(String title) {
         MovieEntry movie = new MovieEntry();
         movie.title = title;
+        return movie;
+    }
+
+    private static MovieEntry movieWithTmdbId(String title, long tmdbId) {
+        MovieEntry movie = movie(title);
+        movie.tmdbId = tmdbId;
         return movie;
     }
 }

@@ -67,6 +67,7 @@ export function ShowCard({ show, onClick, onDelete, onRefresh }: Props) {
         className="delete-btn"
         onClick={e => { e.stopPropagation(); onDelete(); }}
         title="Remove"
+        aria-label={`Remove ${show.title}`}
       >✕</button>
     </div>
   );

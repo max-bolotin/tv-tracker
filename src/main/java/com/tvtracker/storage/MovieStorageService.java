@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +54,10 @@ public class MovieStorageService {
         if (movies == null) {
             throw new IOException("Movie storage file must contain a JSON array: " + file);
         }
+        movies.stream()
+                .filter(movie -> movie.id == null || movie.id.isBlank())
+                .filter(movie -> movie.tmdbId != null)
+                .forEach(movie -> movie.id = legacyMovieId(movie.tmdbId));
         return movies;
     }
 
@@ -114,16 +119,15 @@ public class MovieStorageService {
 
     public synchronized MovieEntry save(String userId, MovieEntry movie) throws IOException {
         Objects.requireNonNull(movie, "movie");
-        if (movie.id == null || movie.id.isBlank()) {
-            movie.id = UUID.randomUUID().toString();
-        }
-
         List<MovieEntry> movies = load(userId);
         return saveToList(userId, movie, movies);
     }
 
     private MovieEntry saveToList(String userId, MovieEntry movie, List<MovieEntry> movies)
             throws IOException {
+        if (movie.id == null || movie.id.isBlank()) {
+            movie.id = UUID.randomUUID().toString();
+        }
         int existingIndex = -1;
         for (int i = 0; i < movies.size(); i++) {
             if (Objects.equals(movies.get(i).id, movie.id)) {
@@ -140,6 +144,11 @@ public class MovieStorageService {
         writeMoviesToFile(resolveUserFile(userId), movies);
         sse.broadcastMoviesChanged();
         return movie;
+    }
+
+    private static String legacyMovieId(Long tmdbId) {
+        return UUID.nameUUIDFromBytes(
+                ("tv-tracker-legacy-movie:" + tmdbId).getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     public synchronized AddResult saveIfTmdbIdAbsent(String userId, MovieEntry movie) throws IOException {
