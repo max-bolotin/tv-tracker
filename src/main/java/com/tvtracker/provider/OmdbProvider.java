@@ -8,6 +8,7 @@ import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -27,14 +31,29 @@ public class OmdbProvider {
     private final String baseUrl;
     private final HttpClient http = HttpClient.newHttpClient();
     private final ObjectMapper mapper;
+    private final Duration backoffDuration;
+    private final Clock clock;
+    private volatile Instant backoffUntil;
 
     public OmdbProvider(
             @Value("${app.omdb.api-key:}") String apiKey,
             @Value("${app.omdb.base-url:https://www.omdbapi.com}") String baseUrl,
             ObjectMapper mapper) {
+        this(apiKey, baseUrl, Duration.ofHours(6), mapper, Clock.systemUTC());
+    }
+
+    @Autowired
+    public OmdbProvider(
+            @Value("${app.omdb.api-key:}") String apiKey,
+            @Value("${app.omdb.base-url:https://www.omdbapi.com}") String baseUrl,
+            @Value("${app.omdb.backoff:PT6H}") Duration backoffDuration,
+            ObjectMapper mapper,
+            Clock clock) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl;
+        this.backoffDuration = backoffDuration;
         this.mapper = mapper;
+        this.clock = clock;
     }
 
     public boolean isConfigured() {
@@ -56,6 +75,7 @@ public class OmdbProvider {
      */
     public void enrichShow(TrackedShow show) {
         if (!isConfigured() || show.imdbId == null) return;
+        if (isBackoffActive()) return;
         if (isRatingFresh(show.ratingsUpdatedAt)) return;
         try {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId + "&type=series");
@@ -67,6 +87,8 @@ public class OmdbProvider {
             show.rtRating = parseRt(root);
             show.ratingsUpdatedAt = LocalDate.now().toString();
             log.debug("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
+        } catch (OmdbBackoffException | OmdbAuthenticationException e) {
+            // The provider has already logged the quota or authentication failure.
         } catch (Exception e) {
             log.warn("OMDb enrichShow failed for '{}': {}", show.title, e.getMessage());
         }
@@ -75,6 +97,9 @@ public class OmdbProvider {
     public void enrichMovie(MovieEntry movie) {
         if (!isConfigured() || movie.imdbId == null || movie.imdbId.isBlank()) {
             return;
+        }
+        if (isBackoffActive()) {
+            throw new UpstreamServiceException("OMDb quota backoff is active");
         }
         try {
             String url = UriComponentsBuilder.fromUriString(baseUrl)
@@ -104,6 +129,7 @@ public class OmdbProvider {
      */
     public void enrichSeason(TrackedShow show, Season season) {
         if (!isConfigured() || show.imdbId == null) return;
+        if (isBackoffActive()) return;
         if (isRatingFresh(season.ratingsUpdatedAt)) return;
         try {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId
@@ -117,6 +143,8 @@ public class OmdbProvider {
             season.ratingsUpdatedAt = LocalDate.now().toString();
             log.debug("OMDb enriched show '{}' season {}: imdb={} rt={}", show.title, season.number,
                     season.imdbRating, season.rtRating);
+        } catch (OmdbBackoffException | OmdbAuthenticationException e) {
+            // The provider has already logged the quota or authentication failure.
         } catch (Exception e) {
             log.warn("OMDb enrichSeason failed for '{}' s{}: {}", show.title, season.number, e.getMessage());
         }
@@ -126,7 +154,7 @@ public class OmdbProvider {
     private boolean isRatingFresh(String updatedAt) {
         if (updatedAt == null) return false;
         try {
-            return LocalDate.parse(updatedAt).isAfter(LocalDate.now().minusMonths(6));
+            return LocalDate.parse(updatedAt).isAfter(LocalDate.now(clock).minusMonths(6));
         } catch (Exception e) {
             return false;
         }
@@ -152,12 +180,46 @@ public class OmdbProvider {
     }
 
     private JsonNode get(String url) throws Exception {
+        if (isBackoffActive()) {
+            throw new OmdbBackoffException();
+        }
         HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() != 200) {
-            String body = resp.body();
-            throw new RuntimeException("HTTP " + resp.statusCode() + " - " + body);
+        JsonNode body = mapper.readTree(resp.body());
+        String error = body.path("Error").asText("");
+        if (error.contains("Request limit reached!")) {
+            startBackoff();
+            throw new OmdbBackoffException();
         }
-        return mapper.readTree(resp.body());
+        if (resp.statusCode() != 200) {
+            if (resp.statusCode() == 401) {
+                log.error("OMDb rejected the API key (HTTP 401): {}",
+                        error.isBlank() ? resp.body() : error);
+                throw new OmdbAuthenticationException("OMDb authentication failed");
+            }
+            throw new RuntimeException("HTTP " + resp.statusCode() + " - " + resp.body());
+        }
+        return body;
+    }
+
+    public boolean isBackoffActive() {
+        Instant until = backoffUntil;
+        return until != null && clock.instant().isBefore(until);
+    }
+
+    private synchronized void startBackoff() {
+        Instant now = clock.instant();
+        if (backoffUntil == null || !now.isBefore(backoffUntil)) {
+            backoffUntil = now.plus(backoffDuration);
+            log.warn("OMDb request quota reached; suppressing requests until {}", backoffUntil);
+        }
+    }
+
+    private static final class OmdbBackoffException extends RuntimeException {}
+
+    private static final class OmdbAuthenticationException extends RuntimeException {
+        private OmdbAuthenticationException(String message) {
+            super(message);
+        }
     }
 }

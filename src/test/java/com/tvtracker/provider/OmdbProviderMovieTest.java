@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
+import com.tvtracker.model.TrackedShow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,21 +12,30 @@ import org.junit.jupiter.api.Test;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OmdbProviderMovieTest {
     private HttpServer server;
     private String responseBody;
     private int responseStatus = 200;
     private final AtomicReference<String> requestTarget = new AtomicReference<>();
+    private final AtomicInteger requestCount = new AtomicInteger();
 
     @BeforeEach
     void startServer() throws Exception {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/", exchange -> {
+            requestCount.incrementAndGet();
             requestTarget.set(exchange.getRequestURI().toString());
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(responseStatus, body.length);
@@ -105,11 +115,101 @@ class OmdbProviderMovieTest {
                 UpstreamServiceException.class, () -> provider().enrichMovie(movie));
     }
 
+    @Test
+    void quotaLimitStartsBackoffAndSuppressesAllOmdbRequestsUntilItExpires() {
+        responseStatus = 401;
+        responseBody = """
+                {"Response":"False","Error":"Request limit reached!"}
+                """;
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-22T10:00:00Z"));
+        OmdbProvider provider = provider(Clock.fixed(now.get(), ZoneId.of("UTC")));
+        MovieEntry movie = movie();
+
+        org.junit.jupiter.api.Assertions.assertThrows(UpstreamServiceException.class,
+                () -> provider.enrichMovie(movie));
+        assertTrue(provider.isBackoffActive());
+        assertEquals(1, requestCount.get());
+
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        provider.enrichShow(show);
+        assertEquals(1, requestCount.get());
+    }
+
+    @Test
+    void requestsResumeAfterConfiguredBackoffPeriod() {
+        responseStatus = 401;
+        responseBody = """
+                {"Response":"False","Error":"Request limit reached!"}
+                """;
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-22T10:00:00Z"));
+        Clock clock = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneId.of("UTC");
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+        };
+        OmdbProvider provider = provider(clock);
+        org.junit.jupiter.api.Assertions.assertThrows(UpstreamServiceException.class,
+                () -> provider.enrichMovie(movie()));
+        assertEquals(1, requestCount.get());
+
+        now.set(now.get().plus(Duration.ofHours(6)));
+        responseStatus = 200;
+        responseBody = """
+                {"Response":"True","imdbRating":"8.2","Ratings":[]}
+                """;
+        provider.enrichMovie(movie());
+
+        assertFalse(provider.isBackoffActive());
+        assertEquals(2, requestCount.get());
+    }
+
+    @Test
+    void invalidApiKeyDoesNotStartQuotaBackoff() {
+        responseStatus = 401;
+        responseBody = """
+                {"Response":"False","Error":"Invalid API key!"}
+                """;
+        OmdbProvider provider = provider(Clock.fixed(
+                Instant.parse("2026-10-22T10:00:00Z"), ZoneId.of("UTC")));
+
+        org.junit.jupiter.api.Assertions.assertThrows(UpstreamServiceException.class,
+                () -> provider.enrichMovie(movie()));
+        assertFalse(provider.isBackoffActive());
+
+        org.junit.jupiter.api.Assertions.assertThrows(UpstreamServiceException.class,
+                () -> provider.enrichMovie(movie()));
+        assertEquals(2, requestCount.get());
+    }
+
     private OmdbProvider provider() {
+        return provider(Clock.systemUTC());
+    }
+
+    private OmdbProvider provider(Clock clock) {
         return new OmdbProvider(
                 "test-key",
                 "http://localhost:" + server.getAddress().getPort(),
-                new ObjectMapper());
+                Duration.ofHours(6),
+                new ObjectMapper(),
+                clock);
+    }
+
+    private static MovieEntry movie() {
+        MovieEntry movie = new MovieEntry();
+        movie.imdbId = "tt0000042";
+        return movie;
     }
 
     private String queryParameter(String key) {

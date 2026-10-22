@@ -81,8 +81,12 @@ public class MetadataService {
       omdb.enrichMovie(movie);
       return new MovieMetadataResult(movie, true);
     } catch (UpstreamServiceException e) {
-      log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
-          movie.title, e.getMessage());
+      if (omdb.isBackoffActive()) {
+        log.debug("OMDb ratings for movie '{}' deferred while quota backoff is active", movie.title);
+      } else {
+        log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
+            movie.title, e.getMessage());
+      }
       return new MovieMetadataResult(movie, false);
     }
   }

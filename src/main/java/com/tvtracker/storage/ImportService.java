@@ -24,9 +24,17 @@ public class ImportService {
      * Shows that can't be resolved via the metadata API are added with title-only stubs.
      */
     public record ImportResult(List<TrackedShow> shows, List<String> stubTitles) {}
+    public record ResolvedImport(List<ImportedShow> shows, List<String> stubTitles) {}
+    public record ImportedShow(TrackedShow show, WatchStatus sourceSection) {}
 
     public ImportResult resolve(ImportExportPayload payload) {
-        List<TrackedShow> result = new ArrayList<>();
+        ResolvedImport resolved = resolveWithSource(payload);
+        return new ImportResult(resolved.shows().stream().map(ImportedShow::show).toList(),
+                resolved.stubTitles());
+    }
+
+    public ResolvedImport resolveWithSource(ImportExportPayload payload) {
+        List<ImportedShow> result = new ArrayList<>();
         List<String> stubs = new ArrayList<>();
 
         addAll(result, stubs, payload.shows,         WatchStatus.WATCHING_NOW);
@@ -35,23 +43,27 @@ public class ImportService {
         addAll(result, stubs, payload.finishedShows,  WatchStatus.FINISHED);
         addAll(result, stubs, payload.stoppedShows,   WatchStatus.DROPPED);
 
-        return new ImportResult(result, stubs);
+        return new ResolvedImport(result, stubs);
     }
 
-    private void addAll(List<TrackedShow> result, List<String> stubs,
+    private void addAll(List<ImportedShow> result, List<String> stubs,
                         List<ImportExportPayload.ImportShow> imports,
-                        WatchStatus targetStatus) {
+                        WatchStatus sourceSection) {
         if (imports == null) return;
         for (var imp : imports) {
             try {
                 TrackedShow show = fetchFresh(imp);
                 overlayWatchedState(show, imp);
-                show.watchStatus = targetStatus;
-                result.add(show);
+                overlayRatings(show, imp);
+                show.watchStatus = sourceSection;
+                result.add(new ImportedShow(show, sourceSection));
             } catch (Exception e) {
                 log.warn("Could not resolve show '{}': {} — adding as stub", imp.title, e.getMessage());
                 stubs.add(imp.title);
-                result.add(stub(imp, targetStatus));
+                TrackedShow stub = stub(imp, sourceSection);
+                overlayWatchedState(stub, imp);
+                overlayRatings(stub, imp);
+                result.add(new ImportedShow(stub, sourceSection));
             }
         }
     }
@@ -60,7 +72,7 @@ public class ImportService {
     private TrackedShow fetchFresh(ImportExportPayload.ImportShow imp) {
         // Prefer direct ID lookup — fastest and most accurate
         if (imp.tmdbId != null || imp.tvmazeId != null) {
-            TrackedShow show = metadata.fetchDetails(imp.tmdbId, imp.tvmazeId);
+            TrackedShow show = metadata.fetchDetails(imp.tmdbId, imp.tvmazeId, false);
             show.id = UUID.randomUUID().toString();
             return show;
         }
@@ -92,6 +104,23 @@ public class ImportService {
         }
     }
 
+    private void overlayRatings(TrackedShow show, ImportExportPayload.ImportShow imp) {
+        if (imp.imdbRating != null) show.imdbRating = imp.imdbRating;
+        if (imp.rtRating != null) show.rtRating = imp.rtRating;
+        if (imp.ratingsUpdatedAt != null) show.ratingsUpdatedAt = imp.ratingsUpdatedAt;
+        if (imp.ratingLastFetched != null) show.ratingLastFetched = imp.ratingLastFetched;
+        if (imp.seasons == null || show.seasons == null) return;
+        Map<Integer, ImportExportPayload.SeasonDetail> importedSeasons = new HashMap<>();
+        imp.seasons.forEach(season -> importedSeasons.put(season.number, season));
+        for (Season season : show.seasons) {
+            ImportExportPayload.SeasonDetail source = importedSeasons.get(season.number);
+            if (source == null) continue;
+            if (source.imdbRating != null) season.imdbRating = source.imdbRating;
+            if (source.rtRating != null) season.rtRating = source.rtRating;
+            if (source.ratingsUpdatedAt != null) season.ratingsUpdatedAt = source.ratingsUpdatedAt;
+        }
+    }
+
     private TrackedShow resolveFromApi(ImportExportPayload.ImportShow imp) {
         List<ShowSearchResult> hits = metadata.search(imp.title);
         ShowSearchResult best = hits.stream()
@@ -101,7 +130,7 @@ public class ImportService {
 
         if (best == null) throw new RuntimeException("No search results");
 
-        TrackedShow show = metadata.fetchDetails(best.tmdbId, best.tvmazeId);
+        TrackedShow show = metadata.fetchDetails(best.tmdbId, best.tvmazeId, false);
         show.id = UUID.randomUUID().toString();
         return show;
     }
@@ -124,6 +153,11 @@ public class ImportService {
     private TrackedShow stub(ImportExportPayload.ImportShow imp, WatchStatus status) {
         TrackedShow show = new TrackedShow();
         show.id = UUID.randomUUID().toString();
+        show.tmdbId = imp.tmdbId;
+        show.tvmazeId = imp.tvmazeId;
+        show.imdbId = imp.imdbId;
+        show.posterPath = imp.posterPath;
+        show.overview = imp.overview;
         show.title = imp.title;
         show.watchStatus = status;
         return show;

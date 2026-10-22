@@ -1,6 +1,7 @@
 package com.tvtracker.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import java.util.List;
 
 /** Human-friendly import/export format. */
@@ -34,6 +35,18 @@ public class ImportExportPayload {
         @JsonProperty("poster_path")    public String posterPath;
         public String overview;
         @JsonProperty("production_status") public String productionStatus;
+        @JsonProperty("imdb_rating")
+        @JsonAlias("imdbRating")
+        public String imdbRating;
+        @JsonProperty("rt_rating")
+        @JsonAlias("rtRating")
+        public String rtRating;
+        @JsonProperty("ratings_updated_at")
+        @JsonAlias("ratingsUpdatedAt")
+        public String ratingsUpdatedAt;
+        @JsonProperty("rating_last_fetched")
+        @JsonAlias("ratingLastFetched")
+        public String ratingLastFetched;
 
         @JsonProperty("watched_seasons")
         public List<Integer> watchedSeasons;
@@ -67,6 +80,15 @@ public class ImportExportPayload {
     public static class SeasonDetail {
         public int number;
         public List<EpisodeDetail> episodes;
+        @JsonProperty("imdb_rating")
+        @JsonAlias("imdbRating")
+        public String imdbRating;
+        @JsonProperty("rt_rating")
+        @JsonAlias("rtRating")
+        public String rtRating;
+        @JsonProperty("ratings_updated_at")
+        @JsonAlias("ratingsUpdatedAt")
+        public String ratingsUpdatedAt;
 
         public int getNumber() { return number; }
         public void setNumber(int number) { this.number = number; }

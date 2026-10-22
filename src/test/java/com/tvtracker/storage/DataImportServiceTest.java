@@ -3,11 +3,16 @@ package com.tvtracker.storage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.controller.SseController;
 import com.tvtracker.exception.InvalidImportException;
+import com.tvtracker.model.Episode;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieStatus;
 import com.tvtracker.model.ImportExportPayload;
+import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
+import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.OmdbProvider;
+import com.tvtracker.provider.TmdbProvider;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,6 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class DataImportServiceTest {
     @TempDir
@@ -118,6 +125,178 @@ class DataImportServiceTest {
         assertEquals(WatchStatus.WATCHING_NOW, importedShows.getFirst().watchStatus);
         assertEquals(1, importedMovies.size());
         assertEquals("Arrival", importedMovies.getFirst().title);
+    }
+
+    @Test
+    void nonEmptyMultiSectionImportWritesShowsToTheirSourceSectionsAndReportsWrittenCount()
+            throws Exception {
+        DataImportService.ImportSummary result = importJson("""
+                {
+                  "shows":[{"title":"Watching","tmdb_id":101}],
+                  "watchlist_shows":[{"title":"Planned","tmdb_id":102}],
+                  "up_to_date_shows":[{"title":"Current","tmdb_id":103}],
+                  "finished_shows":[{"title":"Finished","tmdb_id":104}],
+                  "stopped_shows":[{"title":"Stopped","tmdb_id":105}]
+                }
+                """, "alice");
+
+        List<TrackedShow> saved = showStorage.loadForImport("alice");
+        assertEquals(5, result.showsImported());
+        assertEquals(5, saved.size());
+        assertEquals(WatchStatus.WATCHING_NOW, find(saved, 101L).watchStatus);
+        assertEquals(WatchStatus.NOT_WATCHED, find(saved, 102L).watchStatus);
+        assertEquals(WatchStatus.UP_TO_DATE, find(saved, 103L).watchStatus);
+        assertEquals(WatchStatus.FINISHED, find(saved, 104L).watchStatus);
+        assertEquals(WatchStatus.DROPPED, find(saved, 105L).watchStatus);
+    }
+
+    @Test
+    void partialImportRemovesExistingDuplicateTmdbIdEvenFromOmittedSection() throws Exception {
+        TrackedShow existing = show("Old status", WatchStatus.FINISHED);
+        existing.tmdbId = 201L;
+        showStorage.saveAll("alice", List.of(existing));
+
+        DataImportService.ImportSummary result = importJson(
+                "{\"shows\":[{\"title\":\"New status\",\"tmdb_id\":201}]}", "alice");
+
+        List<TrackedShow> saved = showStorage.loadForImport("alice");
+        assertEquals(1, result.showsImported());
+        assertEquals(1, saved.size());
+        assertEquals("New status", saved.getFirst().title);
+        assertEquals(WatchStatus.WATCHING_NOW, saved.getFirst().watchStatus);
+    }
+
+    @Test
+    void duplicateMovieIdsAreRejectedWithoutWriting() throws Exception {
+        movieStorage.save("alice", movie(31L, "Existing"));
+        byte[] original = Files.readAllBytes(tempDir.resolve("movies").resolve("alice.json"));
+
+        assertThrows(InvalidImportException.class, () -> importJson("""
+                {"version":2,"movies":[
+                  {"id":"same-id","tmdbId":41},
+                  {"id":"same-id","tmdbId":42}
+                ]}
+                """, "alice"));
+
+        assertArrayEquals(original, Files.readAllBytes(tempDir.resolve("movies").resolve("alice.json")));
+    }
+
+    @Test
+    void invalidWatchedDateIsRejected() {
+        assertThrows(InvalidImportException.class, () -> importJson("""
+                {"version":2,"movies":[
+                  {"tmdbId":55,"status":"WATCHED","watchedDate":"2026-02-30"}
+                ]}
+                """, "alice"));
+    }
+
+    @Test
+    void stringVersionTopLevelArrayAndNonArrayShowSectionAreRejected() {
+        for (String invalid : List.of(
+                "{\"version\":\"2\",\"movies\":[]}",
+                "[]",
+                "{\"shows\":{}}")) {
+            assertThrows(InvalidImportException.class, () -> importJson(invalid, "alice"));
+        }
+    }
+
+    @Test
+    void legacyExportFixtureImportsWithoutChangingTheLegacyPayloadShape() throws Exception {
+        try (var fixture = getClass().getResourceAsStream("/fixtures/legacy-export.json")) {
+            assertNotNull(fixture);
+            DataImportService.ImportSummary result = importer.importData(fixture, "alice");
+            assertEquals(1, result.showsImported());
+            assertEquals("Legacy fixture show",
+                    showStorage.loadForImport("alice").getFirst().title);
+        }
+    }
+
+    @Test
+    void listUserIdsIgnoresBackupAndTemporaryFiles() throws Exception {
+        Path users = tempDir.resolve("users");
+        Files.writeString(users.resolve("alice.json"), "[]");
+        Files.writeString(users.resolve("alice.json.bak"), "[]");
+        Files.writeString(users.resolve("alice.json.550e8400-e29b-41d4-a716-446655440000.tmp"), "[]");
+
+        assertEquals(java.util.Set.of("default", "alice"),
+                new java.util.HashSet<>(showStorage.listUserIds()));
+    }
+
+    @Test
+    void importRestoresRatingsIncludedInThePayloadWithoutCallingOmdb() throws Exception {
+        OmdbProvider omdb = mock(OmdbProvider.class);
+        TmdbProvider tmdb = mock(TmdbProvider.class);
+        TrackedShow fetched = show("Ratings show", WatchStatus.NOT_WATCHED);
+        fetched.tmdbId = 301L;
+        Season fetchedSeason = new Season(1);
+        fetchedSeason.episodes = new java.util.ArrayList<>(List.of(new Episode(1, "Episode", null)));
+        fetched.seasons = new java.util.ArrayList<>(List.of(fetchedSeason));
+        when(tmdb.isConfigured()).thenReturn(true);
+        when(tmdb.fetchDetails(301L)).thenReturn(fetched);
+        DataImportService noOmdbImporter = new DataImportService(
+                mapper,
+                new ImportService(new MetadataService(tmdb, null, omdb)),
+                showStorage,
+                movieStorage,
+                mock(SseController.class));
+
+        noOmdbImporter.importData(new ByteArrayInputStream("""
+                {"shows":[{
+                  "title":"Ratings show",
+                  "tmdb_id":301,
+                  "imdb_rating":"8.7",
+                  "rt_rating":"91%",
+                  "seasons":[{"number":1,"imdb_rating":"8.1","rt_rating":"89%","episodes":[]}]
+                }]}
+                """.getBytes(java.nio.charset.StandardCharsets.UTF_8)), "alice");
+
+        TrackedShow imported = showStorage.loadForImport("alice").getFirst();
+        assertEquals("8.7", imported.imdbRating);
+        assertEquals("91%", imported.rtRating);
+        assertEquals("8.1", imported.seasons.getFirst().imdbRating);
+        assertEquals("89%", imported.seasons.getFirst().rtRating);
+        verifyNoInteractions(omdb);
+    }
+
+    @Test
+    void reimportPreservesExistingShowAndSeasonRatingsForMatchingTmdbId() throws Exception {
+        TrackedShow existing = show("Ratings show", WatchStatus.FINISHED);
+        existing.tmdbId = 401L;
+        existing.imdbRating = "8.4";
+        existing.rtRating = "95%";
+        existing.ratingsUpdatedAt = "2026-10-01";
+        Season existingSeason = new Season(1);
+        existingSeason.imdbRating = "8.0";
+        existingSeason.rtRating = "90%";
+        existingSeason.ratingsUpdatedAt = "2026-10-01";
+        existing.seasons = new java.util.ArrayList<>(List.of(existingSeason));
+        showStorage.saveAll("alice", List.of(existing));
+
+        TrackedShow fresh = show("Ratings show", WatchStatus.NOT_WATCHED);
+        fresh.tmdbId = 401L;
+        fresh.seasons = new java.util.ArrayList<>(List.of(new Season(1)));
+        DataImportService metadataImporter = new DataImportService(
+                mapper,
+                new ImportService(new MetadataService(null, null, null) {
+                    @Override
+                    public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatings) {
+                        return fresh;
+                    }
+                }),
+                showStorage,
+                movieStorage,
+                mock(SseController.class));
+
+        metadataImporter.importData(new ByteArrayInputStream(
+                "{\"shows\":[{\"title\":\"Ratings show\",\"tmdb_id\":401}]}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)), "alice");
+
+        TrackedShow imported = showStorage.loadForImport("alice").getFirst();
+        assertEquals("8.4", imported.imdbRating);
+        assertEquals("95%", imported.rtRating);
+        assertEquals("2026-10-01", imported.ratingsUpdatedAt);
+        assertEquals("8.0", imported.seasons.getFirst().imdbRating);
+        assertEquals("90%", imported.seasons.getFirst().rtRating);
     }
 
     @Test
@@ -235,6 +414,9 @@ class DataImportServiceTest {
             assertArrayEquals(originalMovies,
                     Files.readAllBytes(tempDir.resolve("movies").resolve("alice.json")));
         }
+        try (var files = Files.list(tempDir.resolve("movies"))) {
+            assertEquals(0, files.filter(path -> path.getFileName().toString().endsWith(".tmp")).count());
+        }
     }
 
     @Test
@@ -279,5 +461,9 @@ class DataImportServiceTest {
         show.title = title;
         show.watchStatus = status;
         return show;
+    }
+
+    private static TrackedShow find(List<TrackedShow> shows, Long tmdbId) {
+        return shows.stream().filter(show -> tmdbId.equals(show.tmdbId)).findFirst().orElseThrow();
     }
 }

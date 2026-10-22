@@ -35,6 +35,11 @@ class ImportServiceTest {
                 show.id = null;
                 return show;
             }
+
+            @Override
+            public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatings) {
+                return fetchDetails(tmdbId, tvmazeId);
+            }
         };
     }
 

@@ -1,0 +1,14 @@
+{
+  "shows": [
+    {
+      "title": "Legacy fixture show",
+      "tmdb_id": 5001,
+      "seasons": [],
+      "watched_seasons": null
+    }
+  ],
+  "watchlist_shows": [],
+  "up_to_date_shows": [],
+  "finished_shows": [],
+  "stopped_shows": []
+}

@@ -9,15 +9,20 @@ import com.tvtracker.exception.InvalidImportException;
 import com.tvtracker.model.ImportExportPayload;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieStatus;
+import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -34,6 +39,7 @@ public class DataImportService {
     private final JsonStorageService showStorage;
     private final MovieStorageService movieStorage;
     private final SseController sse;
+    private final Map<String, Object> userLocks = new ConcurrentHashMap<>();
 
     public DataImportService(
             ObjectMapper mapper,
@@ -48,7 +54,7 @@ public class DataImportService {
         this.sse = sse;
     }
 
-    public synchronized ImportSummary importData(InputStream input, String userId) throws IOException {
+    public ImportSummary importData(InputStream input, String userId) throws IOException {
         JsonNode root;
         try {
             root = mapper.readTree(input);
@@ -83,38 +89,44 @@ public class DataImportService {
         }
         payload.version = version;
 
-        MovieStorageService.ImportFileSnapshot movieSnapshot =
-                moviesPresent ? movieStorage.snapshotForImport(userId) : null;
-        List<TrackedShow> importedShows = List.of();
-        List<String> failedTitles = List.of();
-        List<TrackedShow> showsToWrite = null;
-        if (showsPresent) {
-            ImportService.ImportResult resolved = showImporter.resolve(payload);
-            importedShows = resolved.shows();
-            failedTitles = resolved.stubTitles();
+        ImportService.ResolvedImport resolved = showsPresent
+                ? showImporter.resolveWithSource(payload)
+                : new ImportService.ResolvedImport(List.of(), List.of());
+        List<TrackedShow> importedShows = resolved.shows().stream()
+                .map(ImportService.ImportedShow::show)
+                .toList();
 
-            List<TrackedShow> current = showStorage.loadForImport(userId);
-            showsToWrite = mergeShowSections(current, importedShows, root);
-        }
-
-        boolean movieWriteAttempted = false;
-        try {
-            if (moviesPresent) {
-                movieWriteAttempted = true;
-                movieStorage.replaceForImport(userId, movies);
-            }
+        Object userLock = userLocks.computeIfAbsent(userId, ignored -> new Object());
+        synchronized (userLock) {
+            MovieStorageService.ImportFileSnapshot movieSnapshot =
+                    moviesPresent ? movieStorage.snapshotForImport(userId) : null;
+            List<TrackedShow> showsToWrite = null;
             if (showsPresent) {
-                showStorage.replaceForImport(userId, showsToWrite);
+                List<TrackedShow> current = showStorage.loadForImport(userId);
+                preserveExistingRatings(importedShows, current);
+                showsToWrite = mergeShowSections(current, resolved.shows(), root);
+                ensureImportedShowsPresent(resolved.shows(), showsToWrite);
             }
-        } catch (IOException | RuntimeException e) {
-            if (movieWriteAttempted) {
-                try {
-                    movieStorage.restoreAfterFailedImport(movieSnapshot);
-                } catch (IOException rollbackFailure) {
-                    e.addSuppressed(rollbackFailure);
+
+            boolean movieWriteAttempted = false;
+            try {
+                if (moviesPresent) {
+                    movieWriteAttempted = true;
+                    movieStorage.replaceForImport(userId, movies);
                 }
+                if (showsPresent) {
+                    showStorage.replaceForImport(userId, showsToWrite);
+                }
+            } catch (IOException | RuntimeException e) {
+                if (movieWriteAttempted) {
+                    try {
+                        movieStorage.restoreAfterFailedImport(movieSnapshot);
+                    } catch (IOException rollbackFailure) {
+                        e.addSuppressed(rollbackFailure);
+                    }
+                }
+                throw new IOException("Import failed; the previous data was restored where possible", e);
             }
-            throw new IOException("Import failed; the previous data was restored where possible", e);
         }
 
         if (showsPresent) {
@@ -123,7 +135,8 @@ public class DataImportService {
         if (moviesPresent) {
             sse.broadcastMoviesChanged();
         }
-        return new ImportSummary(importedShows.size(), moviesPresent ? movies.size() : 0, failedTitles);
+        return new ImportSummary(showsPresent ? importedShows.size() : 0,
+                moviesPresent ? movies.size() : 0, resolved.stubTitles());
     }
 
     private static int validateVersion(JsonNode root) {
@@ -151,6 +164,7 @@ public class DataImportService {
 
         List<MovieEntry> movies = new ArrayList<>();
         Set<Long> tmdbIds = new HashSet<>();
+        Set<String> movieIds = new HashSet<>();
         for (int index = 0; index < moviesNode.size(); index++) {
             JsonNode node = moviesNode.get(index);
             String fieldPrefix = "movies[" + index + "]";
@@ -228,6 +242,11 @@ public class DataImportService {
                 if (!watchedDateNode.isTextual() || movie.status != MovieStatus.WATCHED) {
                     throw new InvalidImportException(fieldPrefix + ".watchedDate is only allowed for WATCHED movies");
                 }
+                try {
+                    LocalDate.parse(watchedDateNode.asText());
+                } catch (java.time.format.DateTimeParseException e) {
+                    throw new InvalidImportException(fieldPrefix + ".watchedDate must be a valid ISO date");
+                }
             }
 
             JsonNode idNode = node.get("id");
@@ -237,6 +256,9 @@ public class DataImportService {
             if (idNode == null || idNode.isNull() || movie.id == null || movie.id.isBlank()) {
                 movie.id = UUID.randomUUID().toString();
             }
+            if (!movieIds.add(movie.id)) {
+                throw new InvalidImportException("Duplicate movie id: " + movie.id);
+            }
             movie.lastRefreshedAt = null;
             movies.add(movie);
         }
@@ -244,18 +266,72 @@ public class DataImportService {
     }
 
     private static List<TrackedShow> mergeShowSections(
-            List<TrackedShow> current, List<TrackedShow> imported, JsonNode root) {
+            List<TrackedShow> current, List<ImportService.ImportedShow> imported, JsonNode root) {
         List<TrackedShow> merged = new ArrayList<>(current);
+        Set<Long> importedTmdbIds = imported.stream()
+                .map(ImportService.ImportedShow::show)
+                .map(show -> show.tmdbId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        merged.removeIf(show -> show.tmdbId != null && importedTmdbIds.contains(show.tmdbId));
         for (ShowSection section : SHOW_SECTIONS) {
             if (!root.has(section.key())) {
                 continue;
             }
             merged.removeIf(show -> show.watchStatus == section.status());
             imported.stream()
-                    .filter(show -> show.watchStatus == section.status())
+                    .filter(show -> show.sourceSection() == section.status())
+                    .map(ImportService.ImportedShow::show)
                     .forEach(merged::add);
         }
         return merged;
+    }
+
+    private static void ensureImportedShowsPresent(
+            List<ImportService.ImportedShow> imported, List<TrackedShow> merged) {
+        Set<String> mergedIds = merged.stream()
+                .map(show -> show.id)
+                .collect(java.util.stream.Collectors.toSet());
+        for (ImportService.ImportedShow importedShow : imported) {
+            if (!mergedIds.contains(importedShow.show().id)) {
+                throw new IllegalStateException("Imported show was not present in merged data: "
+                        + importedShow.show().title);
+            }
+        }
+    }
+
+    private static void preserveExistingRatings(List<TrackedShow> imported, List<TrackedShow> current) {
+        Map<Long, TrackedShow> currentByTmdbId = new HashMap<>();
+        for (TrackedShow show : current) {
+            if (show.tmdbId != null) {
+                currentByTmdbId.put(show.tmdbId, show);
+            }
+        }
+        for (TrackedShow show : imported) {
+            TrackedShow existing = currentByTmdbId.get(show.tmdbId);
+            if (existing == null) {
+                continue;
+            }
+            if (show.imdbRating == null) show.imdbRating = existing.imdbRating;
+            if (show.rtRating == null) show.rtRating = existing.rtRating;
+            if (show.ratingsUpdatedAt == null) show.ratingsUpdatedAt = existing.ratingsUpdatedAt;
+            if (show.ratingLastFetched == null) show.ratingLastFetched = existing.ratingLastFetched;
+            Map<Integer, Season> existingSeasons = new HashMap<>();
+            if (existing.seasons != null) {
+                existing.seasons.forEach(season -> existingSeasons.put(season.number, season));
+            }
+            if (show.seasons == null) {
+                continue;
+            }
+            for (Season season : show.seasons) {
+                Season oldSeason = existingSeasons.get(season.number);
+                if (oldSeason != null) {
+                    if (season.imdbRating == null) season.imdbRating = oldSeason.imdbRating;
+                    if (season.rtRating == null) season.rtRating = oldSeason.rtRating;
+                    if (season.ratingsUpdatedAt == null) season.ratingsUpdatedAt = oldSeason.ratingsUpdatedAt;
+                }
+            }
+        }
     }
 
     public record ImportSummary(int showsImported, int moviesImported, List<String> failedTitles) {}
