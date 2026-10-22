@@ -29,6 +29,9 @@ public class ImportExportPayload {
     public static class ImportShow {
         public String title;
         public Integer year;
+        @JsonProperty("total_seasons")
+        @JsonAlias("totalSeasons")
+        public Integer totalSeasons;
         @JsonProperty("tmdb_id")        public Long tmdbId;
         @JsonProperty("tvmaze_id")      public Long tvmazeId;
         @JsonProperty("imdb_id")        public String imdbId;
@@ -47,6 +50,10 @@ public class ImportExportPayload {
         @JsonProperty("rating_last_fetched")
         @JsonAlias("ratingLastFetched")
         public String ratingLastFetched;
+        @JsonProperty("personal_rating")
+        @JsonAlias("personalRating")
+        public Double personalRating;
+        public List<Actor> cast;
 
         @JsonProperty("watched_seasons")
         public List<Integer> watchedSeasons;

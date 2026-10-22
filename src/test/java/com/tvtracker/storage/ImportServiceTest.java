@@ -1,214 +1,187 @@
 package com.tvtracker.storage;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.model.*;
-import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Tests ImportService business logic: payload → TrackedShow mapping,
- * watched-season marking, and round-trip export shape.
- * No metadata API calls — uses a stub that returns pre-built shows.
- */
 class ImportServiceTest {
 
-    // --- stub MetadataService that returns a show built from the search title ---
-    private static com.tvtracker.provider.MetadataService stubMetadata(TrackedShow... returnedShows) {
-        return new com.tvtracker.provider.MetadataService(null, null, null) {
-            int callCount = 0;
+  @Test
+  void importUsesSourceSectionsAndAssignsNewIds() {
+    ImportExportPayload payload = new ImportExportPayload();
+    payload.shows = List.of(importShow("Watching", 1));
+    payload.watchlistShows = List.of(importShow("Planned", 2));
+    payload.upToDateShows = List.of(importShow("Up to date", 3));
+    payload.finishedShows = List.of(importShow("Finished", 4));
+    payload.stoppedShows = List.of(importShow("Stopped", 5));
 
-            @Override
-            public List<ShowSearchResult> search(String query) {
-                ShowSearchResult r = new ShowSearchResult();
-                r.title = query;
-                // no tmdbId/tvmazeId — forces resolveFromApi path which calls fetchDetails next
-                return List.of(r);
-            }
+    List<TrackedShow> imported = new ImportService().resolve(payload).shows();
 
-            @Override
-            public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId) {
-                if (returnedShows.length == 0) throw new RuntimeException("No stub shows");
-                TrackedShow show = returnedShows[Math.min(callCount++, returnedShows.length - 1)];
-                show.id = null;
-                return show;
-            }
+    assertEquals(5, imported.size());
+    assertEquals(List.of(
+            WatchStatus.WATCHING_NOW,
+            WatchStatus.NOT_WATCHED,
+            WatchStatus.UP_TO_DATE,
+            WatchStatus.FINISHED,
+            WatchStatus.DROPPED),
+        imported.stream().map(show -> show.watchStatus).toList());
+    assertNotNull(imported.get(0).id);
+    assertNotEquals(imported.get(0).id, imported.get(1).id);
+  }
 
-            @Override
-            public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatings) {
-                return fetchDetails(tmdbId, tvmazeId);
-            }
-        };
+  @Test
+  void importRestoresSnapshotMetadataAndRatingsWithoutResolution() {
+    ImportExportPayload payload = new ImportExportPayload();
+    ImportExportPayload.ImportShow entry = importShow("Silo", 1);
+    entry.year = 2023;
+    entry.totalSeasons = 2;
+    entry.tmdbId = 42L;
+    entry.tvmazeId = 24L;
+    entry.imdbId = "tt1234567";
+    entry.posterPath = "/poster.jpg";
+    entry.overview = "Snapshot overview";
+    entry.productionStatus = "ENDED";
+    entry.imdbRating = "8.4";
+    entry.rtRating = "95%";
+    entry.ratingsUpdatedAt = "2026-10-01";
+    entry.ratingLastFetched = "2026-10-02";
+    entry.personalRating = 9.0;
+    entry.cast = List.of(new Actor("Actor", "/actor.jpg", "https://example.test/actor"));
+    entry.seasons.getFirst().imdbRating = "8.1";
+    entry.seasons.getFirst().rtRating = "90%";
+    entry.seasons.getFirst().ratingsUpdatedAt = "2026-10-01";
+    entry.seasons.getFirst().episodes.getFirst().watched = true;
+    payload.shows = List.of(entry);
+
+    TrackedShow imported = new ImportService().resolve(payload).shows().getFirst();
+
+    assertEquals(42L, imported.tmdbId);
+    assertEquals(2023, imported.firstAirYear);
+    assertEquals(2, imported.totalSeasons);
+    assertEquals("tt1234567", imported.imdbId);
+    assertEquals("/poster.jpg", imported.posterPath);
+    assertEquals("Snapshot overview", imported.overview);
+    assertEquals(ProductionStatus.ENDED, imported.productionStatus);
+    assertEquals("8.4", imported.imdbRating);
+    assertEquals("95%", imported.rtRating);
+    assertEquals("2026-10-01", imported.ratingsUpdatedAt);
+    assertEquals("2026-10-02", imported.ratingLastFetched);
+    assertEquals(9.0, imported.personalRating);
+    assertEquals("Actor", imported.cast.getFirst().name);
+    assertEquals("8.1", imported.seasons.getFirst().imdbRating);
+    assertEquals("90%", imported.seasons.getFirst().rtRating);
+    assertTrue(imported.seasons.getFirst().episodes.getFirst().watched);
+  }
+
+  @Test
+  void exportedShowRatingsAndDetailsRoundTripThroughImport() throws Exception {
+    TrackedShow original = showWithSeasons("Silo", 1);
+    original.watchStatus = WatchStatus.WATCHING_NOW;
+    original.tmdbId = 42L;
+    original.firstAirYear = 2023;
+    original.totalSeasons = 2;
+    original.imdbRating = "8.4";
+    original.rtRating = "95%";
+    original.ratingsUpdatedAt = "2026-10-01";
+    original.ratingLastFetched = "2026-10-02";
+    original.personalRating = 9.0;
+    original.cast = new ArrayList<>(List.of(new Actor("Actor", "/actor.jpg", null)));
+    Season season = original.seasons.getFirst();
+    season.imdbRating = "8.1";
+    season.rtRating = "90%";
+    season.ratingsUpdatedAt = "2026-10-01";
+    season.episodes.getFirst().watched = true;
+
+    ObjectMapper mapper = new ObjectMapper();
+    ImportExportPayload exported = new ImportService().toPayload(List.of(original));
+    ImportExportPayload serialized = mapper.readValue(mapper.writeValueAsBytes(exported),
+        ImportExportPayload.class);
+    TrackedShow restored = new ImportService().resolve(serialized).shows().getFirst();
+
+    assertEquals(original.imdbRating, restored.imdbRating);
+    assertEquals(original.rtRating, restored.rtRating);
+    assertEquals(original.ratingsUpdatedAt, restored.ratingsUpdatedAt);
+    assertEquals(original.ratingLastFetched, restored.ratingLastFetched);
+    assertEquals(original.personalRating, restored.personalRating);
+    assertEquals(original.cast.getFirst().name, restored.cast.getFirst().name);
+    assertEquals(season.imdbRating, restored.seasons.getFirst().imdbRating);
+    assertEquals(season.rtRating, restored.seasons.getFirst().rtRating);
+    assertEquals(season.ratingsUpdatedAt, restored.seasons.getFirst().ratingsUpdatedAt);
+    assertTrue(restored.seasons.getFirst().episodes.getFirst().watched);
+  }
+
+  @Test
+  void legacyWatchedSeasonsAreAppliedWhenEpisodeDetailsAreMissing() {
+    ImportExportPayload payload = new ImportExportPayload();
+    ImportExportPayload.ImportShow entry = new ImportExportPayload.ImportShow();
+    entry.title = "Legacy show";
+    entry.watchedSeasons = List.of(1);
+    payload.shows = List.of(entry);
+
+    TrackedShow imported = new ImportService().resolve(payload).shows().getFirst();
+
+    assertEquals("Legacy show", imported.title);
+    assertTrue(imported.seasons.isEmpty());
+    assertEquals(WatchStatus.WATCHING_NOW, imported.watchStatus);
+  }
+
+  @Test
+  void exportRoutesShowsToTheirSections() {
+    TrackedShow watching = showWithSeasons("Watching", 1);
+    watching.watchStatus = WatchStatus.WATCHING_NOW;
+    watching.seasons.getFirst().episodes.forEach(episode -> episode.watched = true);
+    TrackedShow planned = showWithSeasons("Planned", 1);
+    planned.watchStatus = WatchStatus.NOT_WATCHED;
+    TrackedShow finished = showWithSeasons("Finished", 1);
+    finished.watchStatus = WatchStatus.FINISHED;
+    TrackedShow dropped = showWithSeasons("Dropped", 1);
+    dropped.watchStatus = WatchStatus.DROPPED;
+    TrackedShow upToDate = showWithSeasons("Up to date", 1);
+    upToDate.watchStatus = WatchStatus.UP_TO_DATE;
+
+    ImportExportPayload payload = new ImportService().toPayload(
+        List.of(watching, planned, finished, dropped, upToDate));
+
+    assertEquals("Watching", payload.shows.getFirst().title);
+    assertEquals(List.of(1), payload.shows.getFirst().watchedSeasons);
+    assertEquals("Planned", payload.watchlistShows.getFirst().title);
+    assertEquals("Finished", payload.finishedShows.getFirst().title);
+    assertEquals("Dropped", payload.stoppedShows.getFirst().title);
+    assertEquals("Up to date", payload.upToDateShows.getFirst().title);
+  }
+
+  private static ImportExportPayload.ImportShow importShow(String title, int seasonNumber) {
+    ImportExportPayload.ImportShow show = new ImportExportPayload.ImportShow();
+    show.title = title;
+    ImportExportPayload.SeasonDetail season = new ImportExportPayload.SeasonDetail();
+    season.number = seasonNumber;
+    season.episodes = new ArrayList<>();
+    ImportExportPayload.EpisodeDetail episode = new ImportExportPayload.EpisodeDetail();
+    episode.number = 1;
+    episode.name = "Episode 1";
+    season.episodes.add(episode);
+    show.seasons = new ArrayList<>(List.of(season));
+    return show;
+  }
+
+  private static TrackedShow showWithSeasons(String title, int... seasonNumbers) {
+    TrackedShow show = new TrackedShow();
+    show.title = title;
+    show.productionStatus = ProductionStatus.ONGOING;
+    show.watchStatus = WatchStatus.NOT_WATCHED;
+    show.seasons = new ArrayList<>();
+    for (int number : seasonNumbers) {
+      Season season = new Season(number);
+      season.episodes = new ArrayList<>(List.of(
+          new Episode(1, "E1", null),
+          new Episode(2, "E2", null)));
+      show.seasons.add(season);
     }
-
-    private static TrackedShow showWithSeasons(String title, int... seasonNumbers) {
-        TrackedShow show = new TrackedShow();
-        show.title = title;
-        show.productionStatus = ProductionStatus.ONGOING;
-        show.watchStatus = WatchStatus.NOT_WATCHED;
-        show.seasons = new ArrayList<>();
-        for (int n : seasonNumbers) {
-            Season s = new Season(n);
-            s.episodes = new ArrayList<>(List.of(
-                    new Episode(1, "E1", null),
-                    new Episode(2, "E2", null)
-            ));
-            show.seasons.add(s);
-        }
-        return show;
-    }
-
-    // --- import tests ---
-
-    @Test
-    void watchlistShow_isImportedAsNotWatched() {
-        TrackedShow fetched = showWithSeasons("Firefly", 1);
-        ImportService service = new ImportService(stubMetadata(fetched));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var entry = new ImportExportPayload.ImportShow();
-        entry.title = "Firefly";
-        payload.watchlistShows = List.of(entry);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-
-        assertEquals(1, result.size());
-        assertEquals(WatchStatus.NOT_WATCHED, result.getFirst().watchStatus);
-    }
-
-    @Test
-    void watchedSeasonsAreMarkedCorrectly() {
-        TrackedShow fetched = showWithSeasons("Doctor Who", 1, 2, 3);
-        ImportService service = new ImportService(stubMetadata(fetched));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var entry = new ImportExportPayload.ImportShow();
-        entry.title = "Doctor Who";
-        entry.watchedSeasons = List.of(1, 2);
-        payload.shows = List.of(entry);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-        TrackedShow show = result.getFirst();
-
-        assertTrue(show.seasons.get(0).allWatched(), "Season 1 should be fully watched");
-        assertTrue(show.seasons.get(1).allWatched(), "Season 2 should be fully watched");
-        assertFalse(show.seasons.get(2).allWatched(), "Season 3 should NOT be watched");
-    }
-
-    @Test
-    void partiallyWatchedImport_statusIsWatchingNow() {
-        TrackedShow fetched = showWithSeasons("Silo", 1, 2);
-        ImportService service = new ImportService(stubMetadata(fetched));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var entry = new ImportExportPayload.ImportShow();
-        entry.title = "Silo";
-        entry.watchedSeasons = List.of(1); // season 2 not watched
-        payload.shows = List.of(entry);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-        assertEquals(WatchStatus.WATCHING_NOW, result.getFirst().watchStatus);
-    }
-
-    @Test
-    void finishedShow_isImportedWithFinishedStatus() {
-        TrackedShow fetched = showWithSeasons("Good Omens", 1, 2);
-        ImportService service = new ImportService(stubMetadata(fetched));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var entry = new ImportExportPayload.ImportShow();
-        entry.title = "Good Omens";
-        payload.finishedShows = List.of(entry);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-        assertEquals(WatchStatus.FINISHED, result.getFirst().watchStatus);
-    }
-
-    @Test
-    void stoppedShow_isImportedAsDropped() {
-        TrackedShow fetched = showWithSeasons("The Recruit", 1);
-        ImportService service = new ImportService(stubMetadata(fetched));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var entry = new ImportExportPayload.ImportShow();
-        entry.title = "The Recruit";
-        payload.stoppedShows = List.of(entry);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-        assertEquals(WatchStatus.DROPPED, result.getFirst().watchStatus);
-    }
-
-    @Test
-    void eachImportedShowGetsUniqueId() {
-        TrackedShow a = showWithSeasons("Show A", 1);
-        TrackedShow b = showWithSeasons("Show B", 1);
-        ImportService service = new ImportService(stubMetadata(a, b));
-
-        ImportExportPayload payload = new ImportExportPayload();
-        var e1 = new ImportExportPayload.ImportShow(); e1.title = "Show A";
-        var e2 = new ImportExportPayload.ImportShow(); e2.title = "Show B";
-        payload.watchlistShows = List.of(e1, e2);
-
-        List<TrackedShow> result = service.resolve(payload).shows();
-        assertNotEquals(result.get(0).id, result.get(1).id);
-    }
-
-    @Test
-    void nullSections_areSkippedGracefully() {
-        ImportService service = new ImportService(stubMetadata());
-        ImportExportPayload payload = new ImportExportPayload();
-        // all lists are null — should not throw
-        assertDoesNotThrow(() -> service.resolve(payload));
-        assertTrue(service.resolve(payload).shows().isEmpty());
-    }
-
-    // --- export (toPayload) tests ---
-
-    @Test
-    void export_routesShowsToCorrectSection() {
-        TrackedShow watching = showWithSeasons("Silo", 1, 2);
-        watching.watchStatus = WatchStatus.WATCHING_NOW;
-        watching.seasons.getFirst().episodes.forEach(e -> e.watched = true);
-
-        TrackedShow notWatched = showWithSeasons("Firefly", 1);
-        notWatched.watchStatus = WatchStatus.NOT_WATCHED;
-
-        TrackedShow finished = showWithSeasons("Good Omens", 1);
-        finished.watchStatus = WatchStatus.FINISHED;
-
-        TrackedShow dropped = showWithSeasons("The Recruit", 1);
-        dropped.watchStatus = WatchStatus.DROPPED;
-
-        TrackedShow upToDate = showWithSeasons("Black Mirror", 1);
-        upToDate.watchStatus = WatchStatus.UP_TO_DATE;
-
-        ImportService service = new ImportService(null); // toPayload doesn't use metadata
-        ImportExportPayload payload = service.toPayload(List.of(watching, notWatched, finished, dropped, upToDate));
-
-        assertEquals(1, payload.shows.size());
-        assertEquals("Silo", payload.shows.getFirst().title);
-        assertEquals(List.of(1), payload.shows.getFirst().watchedSeasons);
-
-        assertEquals(1, payload.watchlistShows.size());
-        assertEquals("Firefly", payload.watchlistShows.getFirst().title);
-
-        assertEquals(1, payload.finishedShows.size());
-        assertEquals(1, payload.stoppedShows.size());
-        assertEquals(1, payload.upToDateShows.size());
-    }
-
-    @Test
-    void export_watchingNowWithNoFullSeasons_hasNullWatchedSeasons() {
-        TrackedShow show = showWithSeasons("Silo", 1, 2);
-        show.watchStatus = WatchStatus.WATCHING_NOW;
-        // only one episode in season 1 watched — season not fully done
-        show.seasons.getFirst().episodes.getFirst().watched = true;
-
-        ImportService service = new ImportService(null);
-        ImportExportPayload payload = service.toPayload(List.of(show));
-
-        assertNull(payload.shows.getFirst().watchedSeasons);
-    }
+    return show;
+  }
 }

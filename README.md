@@ -86,5 +86,6 @@ API Endpoints
 Notes
 - The app stores per-user data in `./data/users/{userId}.json`. For legacy single-file installs the app still supports a single JSON file (automatic migration planned).
 - Imports keep the immediately previous version of each replaced data file in a sibling `.bak` file (for example `users/{userId}.json.bak` and `movies/{userId}.json.bak`). To restore a backup, stop the app, copy the desired `.bak` file over its matching `.json` file, then restart the app.
+- Exports include saved show and season ratings. Imports make no metadata API calls; older backups still import, but any details or ratings they do not contain remain missing.
 - To customize upload limits in production, set the environment variables shown above — do not edit the packaged JAR.
 - Frontend file-size validation uses Vite env var `VITE_MAX_UPLOAD_BYTES` (bytes). Set this at build time if you want the client to enforce a different limit, e.g.: `VITE_MAX_UPLOAD_BYTES=104857600 npm run build`.
