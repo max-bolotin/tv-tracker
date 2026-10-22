@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, useMemo, useCallback} from 'react';
-import type {TrackedShow, WatchStatus, CurrentUser} from '../types';
+import type {TrackedShow, WatchStatus, CurrentUser, MovieEntry, MovieSearchResult} from '../types';
 import type {ShowSearchResult} from '../types';
 import {api} from '../api/client';
 import {DraggableGrid} from '../components/DraggableGrid';
@@ -10,6 +10,10 @@ import {ScrollToTop} from '../components/ScrollToTop';
 import {RefreshButton} from '../components/RefreshButton';
 import {ThemeSwitcher} from '../components/ThemeSwitcher';
 import {useMobileMenu} from '../hooks/useMobileMenu';
+import {MovieLibrary} from '../components/MovieLibrary';
+import {MovieDetail} from '../components/MovieDetail';
+
+type DashboardTab = WatchStatus | 'ALL' | 'POPULAR' | 'MOVIES';
 
 const STATUS_ORDER: WatchStatus[] = [
   'WATCHING_NOW', 'NOT_WATCHED', 'UP_TO_DATE', 'FINISHED', 'DROPPED',
@@ -23,7 +27,7 @@ const STATUS_LABELS: Record<WatchStatus, string> = {
   DROPPED: 'Dropped',
 };
 
-const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
+const TABS: { label: string; value: DashboardTab }[] = [
   {label: 'Trending now', value: 'POPULAR'},
   {label: 'My Shows (All)', value: 'ALL'},
   {label: 'Watching Now', value: 'WATCHING_NOW'},
@@ -31,11 +35,13 @@ const TABS: { label: string; value: WatchStatus | 'ALL' | 'POPULAR' }[] = [
   {label: 'Up to Date', value: 'UP_TO_DATE'},
   {label: 'Finished', value: 'FINISHED'},
   {label: 'Dropped', value: 'DROPPED'},
+  {label: 'My Movies', value: 'MOVIES'},
 ];
 
 export function Dashboard() {
   const [allShows, setAllShows] = useState<TrackedShow[]>([]);
-  const [tab, setTab] = useState<WatchStatus | 'ALL' | 'POPULAR'>(() => {
+  const [movies, setMovies] = useState<MovieEntry[]>([]);
+  const [tab, setTab] = useState<DashboardTab>(() => {
     try {
       return (localStorage.getItem('tab') as any) || 'POPULAR';
     } catch {
@@ -54,6 +60,7 @@ export function Dashboard() {
   const [popularRows, setPopularRows] = useState(0); // number of rows currently requested
   const MIN_POPULAR = 20;
   const [selected, setSelected] = useState<TrackedShow | null>(null);
+  const [selectedMovie, setSelectedMovie] = useState<MovieEntry | null>(null);
   const [preview, setPreview] = useState<ShowSearchResult | null>(null);
   const searchResultsOpen = useRef(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -66,6 +73,12 @@ export function Dashboard() {
   const {isOpen: menuOpen, openMenu: openMobileMenu, closeMenu: closeMobileMenu} = useMobileMenu();
   const [slideDir, setSlideDir] = useState<'left'|'right'|null>(null);
   const slideTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  const openModal = useCallback((open: () => void) => {
+    open();
+    if (history.state?.searchModal) history.replaceState({modal: true}, '');
+    else history.pushState({modal: true}, '');
+  }, []);
 
   function dedupeShows(shows: any[]) {
     const seen = new Set<string | number>();
@@ -102,12 +115,32 @@ export function Dashboard() {
         const shows = await api.getShows();
         if (!mounted) return;
         setAllShows(shows);
+        api.getMovies().then(trackedMovies => {
+          if (!mounted) return;
+          setMovies(currentMovies => {
+            const moviesById = new Map(trackedMovies.map(movie => [movie.id, movie]));
+            currentMovies.forEach(movie => moviesById.set(movie.id, movie));
+            return [...moviesById.values()];
+          });
+        }).catch(error => {
+          console.error('Failed to load movies', error);
+        });
 
         const pending = localStorage.getItem('postLoginAdd');
         if (!pending) return;
         localStorage.removeItem('postLoginAdd');
         const parsed = JSON.parse(pending);
         // Check if it is already tracked
+        if (parsed.mediaType === 'movie') {
+          const added = await api.addMovie(parsed.tmdbId);
+          if (!mounted) return;
+          setMovies(prev => prev.some(movie => movie.id === added.movie.id)
+            ? prev
+            : [added.movie, ...prev]);
+          setTab('MOVIES');
+          openModal(() => setSelectedMovie(added.movie));
+          return;
+        }
         const existing = (() => {
           const byId = shows.find(s => (parsed.tmdbId && s.tmdbId === parsed.tmdbId) || (parsed.tvmazeId && s.tvmazeId === parsed.tvmazeId));
           if (byId) return byId;
@@ -156,7 +189,7 @@ export function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [currentUser]);
+  }, [currentUser, openModal]);
 
   function computeCols(width: number): number {
     if (width < 540) return 3;
@@ -201,19 +234,23 @@ export function Dashboard() {
       }
       api.getShows().then(shows => setAllShows(shows));
     });
+    es.addEventListener('movies-changed', () => {
+      api.getMovies().then(updatedMovies => {
+        setMovies(updatedMovies);
+        setSelectedMovie(previous => previous
+          ? updatedMovies.find(movie => movie.id === previous.id) ?? null
+          : null);
+      }).catch(error => {
+        console.error('Failed to refresh movies after update event', error);
+      });
+    });
     return () => es.close();
   }, [currentUser]);
-
-  // Push a history entry when a modal opens, pop it to close on back gesture/button
-  const openModal = useCallback((open: () => void) => {
-    open();
-    if (history.state?.searchModal) history.replaceState({modal: true}, '');
-    else history.pushState({modal: true}, '');
-  }, []);
 
   const closeAll = useCallback(() => {
     setSelected(null);
     setPreview(null);
+    setSelectedMovie(null);
   }, []);
 
   const refreshShowSilently = useCallback(async (show: TrackedShow) => {
@@ -245,7 +282,7 @@ export function Dashboard() {
 
   const visibleShows = useMemo(() => {
     if (tab === 'ALL') return allShows;
-    if (tab === 'POPULAR') return [];
+    if (tab === 'POPULAR' || tab === 'MOVIES') return [];
     return allShows.filter(s => s.watchStatus === tab as WatchStatus);
   }, [allShows, tab]);
 
@@ -257,6 +294,7 @@ export function Dashboard() {
   }, [allShows, tab]);
 
   const [authPromptPayload, setAuthPromptPayload] = useState<ShowSearchResult | null>(null);
+  const [authMoviePromptPayload, setAuthMoviePromptPayload] = useState<MovieSearchResult | null>(null);
 
   const handleAdd = async (result: ShowSearchResult): Promise<TrackedShow | undefined> => {
     if (!currentUser) {
@@ -278,18 +316,101 @@ export function Dashboard() {
     }
   };
 
-  const cancelAuthPrompt = () => setAuthPromptPayload(null);
-  const continueAuthPrompt = () => {
-    if (!authPromptPayload) return;
-    // persist desired add across OAuth redirect
-    localStorage.setItem('postLoginAdd', JSON.stringify({
-      tmdbId: authPromptPayload.tmdbId,
-      tvmazeId: authPromptPayload.tvmazeId,
-      title: authPromptPayload.title
-    }));
-    localStorage.setItem('postLoginTab', 'ALL');
+  const handleAddMovie = async (result: MovieSearchResult) => {
+    if (!currentUser) {
+      setAuthMoviePromptPayload(result);
+      return;
+    }
+    try {
+      const added = await api.addMovie(result.tmdbId);
+      setMovies(prev => prev.some(movie => movie.id === added.movie.id)
+        ? prev
+        : [added.movie, ...prev]);
+    } catch (error) {
+      console.error('Failed to add movie', error);
+      setImportToast('Failed to add movie. Please try again.');
+    }
+  };
+
+  const handleSelectMovie = (movie: MovieEntry) => {
+    openModal(() => setSelectedMovie(movie));
+  };
+
+  const handleMovieUpdate = (updated: MovieEntry) => {
+    setMovies(prev => prev.map(movie => movie.id === updated.id ? updated : movie));
+    setSelectedMovie(updated);
+  };
+
+  const handleMovieStatusChange = async (target: MovieEntry) => {
+    try {
+      const updated = await api.updateMovieStatus(target.id, target.status);
+      setMovies(prev => prev.map(movie => movie.id === updated.id ? updated : movie));
+      setSelectedMovie(prev => prev?.id === updated.id ? updated : prev);
+    } catch (error) {
+      console.error('Failed to update movie status', error);
+      setImportToast('Failed to update movie status. Please try again.');
+    }
+  };
+
+  const handleMovieDelete = async (movie: MovieEntry) => {
+    try {
+      await api.deleteMovie(movie.id);
+      setMovies(prev => prev.filter(entry => entry.id !== movie.id));
+      setSelectedMovie(prev => prev?.id === movie.id ? null : prev);
+    } catch (error) {
+      console.error('Failed to remove movie', error);
+      setImportToast('Failed to remove movie. Please try again.');
+    }
+  };
+
+  const handleMovieRefresh = async (movie: MovieEntry) => {
+    try {
+      const updated = await api.refreshMovie(movie.id);
+      setMovies(prev => prev.map(entry => entry.id === updated.id ? updated : entry));
+      setSelectedMovie(prev => prev?.id === updated.id ? updated : prev);
+    } catch (error) {
+      console.error('Failed to refresh movie', error);
+      setImportToast('Failed to refresh movie. Please try again.');
+    }
+  };
+
+  const handleMovieReorder = (ordered: MovieEntry[]) => {
+    setMovies(ordered);
+    void api.reorderMovies(ordered.map(movie => movie.id)).catch(error => {
+      console.error('Failed to reorder movies', error);
+      setImportToast('Failed to reorder movies. Please try again.');
+      api.getMovies().then(setMovies).catch(error => {
+        console.error('Failed to reload movies after reorder failure', error);
+      });
+    });
+  };
+
+  const cancelAuthPrompt = () => {
     setAuthPromptPayload(null);
-    handleSignIn('ALL');
+    setAuthMoviePromptPayload(null);
+  };
+  const continueAuthPrompt = () => {
+    if (!authPromptPayload && !authMoviePromptPayload) return;
+    // persist desired add across OAuth redirect
+    if (authMoviePromptPayload) {
+      localStorage.setItem('postLoginAdd', JSON.stringify({
+        mediaType: 'movie',
+        tmdbId: authMoviePromptPayload.tmdbId,
+        title: authMoviePromptPayload.title,
+      }));
+      localStorage.setItem('postLoginTab', 'MOVIES');
+    } else if (authPromptPayload) {
+      localStorage.setItem('postLoginAdd', JSON.stringify({
+        mediaType: 'show',
+        tmdbId: authPromptPayload.tmdbId,
+        tvmazeId: authPromptPayload.tvmazeId,
+        title: authPromptPayload.title,
+      }));
+      localStorage.setItem('postLoginTab', 'ALL');
+    }
+    setAuthPromptPayload(null);
+    setAuthMoviePromptPayload(null);
+    handleSignIn(authMoviePromptPayload ? 'MOVIES' : 'ALL');
   };
 
   const handleDelete = async (id: string) => {
@@ -460,14 +581,15 @@ export function Dashboard() {
     tabRefs.current.get(tab as string)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }, [tab]);
 
-  const switchTab = useCallback((newTab: typeof tab, dir: 'left'|'right') => {
+  const switchTab = useCallback((newTab: DashboardTab, dir: 'left'|'right') => {
     if (slideTimer.current) clearTimeout(slideTimer.current);
     setSlideDir(dir);
     setTab(newTab);
+    searchBarRef.current?.clearQuery();
     slideTimer.current = setTimeout(() => setSlideDir(null), 260);
   }, []);
 
-  const handleTabClick = useCallback((newTab: typeof tab) => {
+  const handleTabClick = useCallback((newTab: DashboardTab) => {
     if (newTab === tab) return;
     const idx = TAB_VALUES.indexOf(newTab);
     const curIdx = TAB_VALUES.indexOf(tab);
@@ -492,7 +614,7 @@ export function Dashboard() {
         searchResultsOpen.current = false;
         return;
       }
-      if (selected || preview) { closeAll(); return; }
+      if (selected || preview || selectedMovie) { closeAll(); return; }
       if (e.state?.myShows) {
         // landed on myShows entry — nothing to do, tab state is already correct
         return;
@@ -506,7 +628,7 @@ export function Dashboard() {
     };
     window.addEventListener('popstate', onPop, true);
     return () => window.removeEventListener('popstate', onPop, true);
-  }, [selected, preview, switchTab, closeAll]);
+  }, [selected, preview, selectedMovie, switchTab, closeAll]);
 
   // Swipe: only active when touch starts inside the grid, not in modal or tabs row
   const swipeTouchStart = useRef<number | null>(null);
@@ -535,7 +657,7 @@ export function Dashboard() {
 
   const gridProps = {
     shows: allShows,
-    tab,
+    tab: tab === 'MOVIES' ? 'ALL' : tab,
     onReorder: handleReorder,
     onSelect: handleSelectShow,
     onDelete: handleDelete,
@@ -599,6 +721,9 @@ export function Dashboard() {
             onAdd={handleAdd}
             onPreview={handlePreview}
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+            mode={tab === 'MOVIES' ? 'movies' : 'shows'}
+            onAddMovie={handleAddMovie}
+            trackedMovies={movies}
           />
 
           <div className="tabs">
@@ -662,11 +787,11 @@ export function Dashboard() {
               />
           )}
 
-          {authPromptPayload && (
+          {(authPromptPayload || authMoviePromptPayload) && (
               <div className="modal-overlay" onClick={cancelAuthPrompt}>
                 <div className="modal" onClick={e => e.stopPropagation()}>
                   <h3>Sign in required</h3>
-                  <p>You need to sign in with your Google account to track shows. Continue to sign
+                  <p>You need to sign in with your Google account to track {authMoviePromptPayload ? 'movies' : 'shows'}. Continue to sign
                     in?</p>
                   <div style={{
                     display: 'flex',
@@ -726,6 +851,9 @@ export function Dashboard() {
             onAdd={handleAdd}
             onPreview={handlePreview}
             onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+            mode={tab === 'MOVIES' ? 'movies' : 'shows'}
+            onAddMovie={handleAddMovie}
+            trackedMovies={movies}
           />
 
           <div className="tabs">
@@ -754,7 +882,7 @@ export function Dashboard() {
           ) : (
               <div className="auth-gate">
                 <h2>Sign in to continue</h2>
-                <p>Use your Google account to access your personal TV library.</p>
+                <p>Use your Google account to access your personal {tab === 'MOVIES' ? 'movie' : 'TV'} library.</p>
                 <button className="auth-button" onClick={() => handleSignIn(tab as string)}>Continue
                   with Google
                 </button>
@@ -781,11 +909,11 @@ export function Dashboard() {
               />
           )}
 
-          {authPromptPayload && (
+          {(authPromptPayload || authMoviePromptPayload) && (
               <div className="modal-overlay" onClick={cancelAuthPrompt}>
                 <div className="modal" onClick={e => e.stopPropagation()}>
                   <h3>Sign in required</h3>
-                  <p>You need to sign in with your Google account to track shows. Continue to sign
+                  <p>You need to sign in with your Google account to track {authMoviePromptPayload ? 'movies' : 'shows'}. Continue to sign
                     in?</p>
                   <div style={{
                     display: 'flex',
@@ -847,6 +975,9 @@ export function Dashboard() {
           onAdd={handleAdd}
           onPreview={handlePreview}
           onResultsOpenChange={isOpen => { searchResultsOpen.current = isOpen; }}
+          mode={tab === 'MOVIES' ? 'movies' : 'shows'}
+          onAddMovie={handleAddMovie}
+          trackedMovies={movies}
         />
 
         <div className="tabs">
@@ -863,7 +994,16 @@ export function Dashboard() {
         </div>
 
         <div className={`tab-content${slideDir ? ` slide-${slideDir}` : ''}`}>
-          {groups ? (
+          {tab === 'MOVIES' ? (
+              <MovieLibrary
+                movies={movies}
+                onSelect={handleSelectMovie}
+                onStatusChange={handleMovieStatusChange}
+                onDelete={handleMovieDelete}
+                onRefresh={handleMovieRefresh}
+                onReorder={handleMovieReorder}
+              />
+          ) : groups ? (
               groups.length === 0
                   ? <p className="empty">No shows yet. Search and add one!</p>
                   : groups.map((g, i) => (
@@ -890,6 +1030,15 @@ export function Dashboard() {
             />
         )}
 
+        {selectedMovie && (
+            <MovieDetail
+              movie={selectedMovie}
+              onClose={handleCloseModal}
+              onUpdate={handleMovieUpdate}
+              onDelete={() => void handleMovieDelete(selectedMovie)}
+            />
+        )}
+
         {preview && (
             <SearchPreview
                 result={preview}
@@ -900,11 +1049,11 @@ export function Dashboard() {
             />
         )}
 
-        {authPromptPayload && (
+        {(authPromptPayload || authMoviePromptPayload) && (
             <div className="modal-overlay" onClick={cancelAuthPrompt}>
               <div className="modal" onClick={e => e.stopPropagation()}>
                 <h3>Sign in required</h3>
-                <p>You need to sign in with your Google account to track shows. Continue to sign
+                <p>You need to sign in with your Google account to track {authMoviePromptPayload ? 'movies' : 'shows'}. Continue to sign
                   in?</p>
                 <div style={{
                   display: 'flex',

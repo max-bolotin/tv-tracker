@@ -1,24 +1,31 @@
 import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import type { ShowSearchResult } from '../types';
+import type { MovieEntry, MovieSearchResult } from '../types';
 import { api } from '../api/client';
 
 interface Props {
   onAdd: (result: ShowSearchResult) => void;
   onPreview: (result: ShowSearchResult) => void;
   onResultsOpenChange?: (isOpen: boolean) => void;
+  mode?: 'shows' | 'movies';
+  onAddMovie?: (result: MovieSearchResult) => void;
+  trackedMovies?: MovieEntry[];
 }
 
 export interface SearchBarHandle {
   triggerSearch: (query: string) => void;
+  clearQuery: () => void;
 }
 
 export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
-  { onAdd, onPreview, onResultsOpenChange },
+  { onAdd, onPreview, onResultsOpenChange, mode = 'shows', onAddMovie, trackedMovies = [] },
   ref,
 ) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ShowSearchResult[]>([]);
+  const [movieResults, setMovieResults] = useState<MovieSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsOpenRef = useRef(false);
@@ -28,12 +35,26 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
     onResultsOpenChange?.(isOpen);
   }, [onResultsOpenChange]);
 
-  const search = async (q = query) => {
+  useEffect(() => {
+    setQuery('');
+    setResults([]);
+    setMovieResults([]);
+    setError(null);
+  }, [mode]);
+
+  const search = useCallback(async (q = query) => {
     if (!q.trim()) return;
     setLoading(true);
+    setError(null);
     try {
-      const nextResults = await api.searchShows(q);
-      setResults(nextResults);
+      const nextResults = mode === 'movies' ? await api.searchMovies(q) : await api.searchShows(q);
+      if (mode === 'movies') {
+        setMovieResults(nextResults as MovieSearchResult[]);
+        setResults([]);
+      } else {
+        setResults(nextResults as ShowSearchResult[]);
+        setMovieResults([]);
+      }
       if (nextResults.length > 0 && !resultsOpenRef.current) {
         const currentState = history.state;
         const state = currentState && typeof currentState === 'object' ? currentState : {};
@@ -43,10 +64,13 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
         if (history.state?.searchModal) history.back();
         else setResultsOpen(false);
       }
+    } catch (cause) {
+      console.error(`Failed to search ${mode}`, cause);
+      setError(`Search failed. Please try again.`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [mode, query, setResultsOpen]);
 
   useImperativeHandle(ref, () => ({
     triggerSearch(q: string) {
@@ -55,10 +79,20 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
       inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       search(q);
     },
-  }));
+    clearQuery() {
+      setQuery('');
+      setResults([]);
+      setMovieResults([]);
+      setError(null);
+      if (resultsOpenRef.current && history.state?.searchModal) history.back();
+      else setResultsOpen(false);
+    },
+  }), [search, setResultsOpen]);
 
   const closeResults = () => {
     setResults([]);
+    setMovieResults([]);
+    setError(null);
     setResultsOpen(false);
   };
 
@@ -96,7 +130,7 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
               if (e.key === 'Enter') search();
               if (e.key === 'Escape') dismiss();
             }}
-            placeholder="Search for a TV show..."
+            placeholder={mode === 'movies' ? 'Search for movies...' : 'Search for a TV show...'}
           />
           {query && (
             <button
@@ -135,6 +169,36 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
           </ul>
         </>
       )}
+      {movieResults.length > 0 && (
+        <>
+          <div className="search-backdrop" onClick={dismiss} />
+          <ul className="search-results">
+            {movieResults.map(movie => {
+              const tracked = trackedMovies.find(entry => entry.tmdbId === movie.tmdbId);
+              return (
+                <li key={movie.tmdbId}>
+                  {movie.poster && <img src={movie.poster} alt={movie.title} />}
+                  <div>
+                    <strong>{movie.title}</strong>
+                    {movie.releaseDate && <p>{movie.releaseDate.slice(0, 4)}</p>}
+                    {movie.overview && <p>{movie.overview.slice(0, 100)}{movie.overview.length > 100 ? '…' : ''}</p>}
+                  </div>
+                  {tracked ? (
+                    <span className="search-tracked-label">Tracked</span>
+                  ) : (
+                    <button onClick={() => {
+                      onAddMovie?.(movie);
+                      dismiss();
+                      setQuery('');
+                    }}>+ Track</button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+      {error && <p className="search-error" role="alert">{error}</p>}
     </div>
   );
 });

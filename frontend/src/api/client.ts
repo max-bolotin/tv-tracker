@@ -1,4 +1,4 @@
-import type { CurrentUser, TrackedShow, ShowSearchResult, WatchStatus } from '../types';
+import type { CurrentUser, MovieEntry, MovieSearchResult, TrackedShow, ShowSearchResult, WatchStatus, MovieStatus } from '../types';
 
 const BASE = '/api';
 
@@ -30,6 +30,42 @@ export const api = {
   },
 
   searchShows: (q: string) => req<ShowSearchResult[]>(`/shows/search?q=${encodeURIComponent(q)}`),
+
+  getMovies: () => req<MovieEntry[]>('/movies'),
+
+  searchMovies: (q: string) => req<MovieSearchResult[]>(`/movies/search?q=${encodeURIComponent(q)}`),
+
+  addMovie: (tmdbId: number) =>
+    req<{ movie: MovieEntry; created: boolean }>('/movies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tmdbId }),
+    }),
+
+  updateMovieStatus: (id: string, status: MovieStatus) =>
+    req<MovieEntry>(`/movies/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+
+  updateMovieRating: (id: string, personalRating: number | null) =>
+    req<MovieEntry>(`/movies/${id}/rating`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personalRating }),
+    }),
+
+  deleteMovie: (id: string) => req<void>(`/movies/${id}`, { method: 'DELETE' }),
+
+  refreshMovie: (id: string) => req<MovieEntry>(`/movies/${id}/refresh`, { method: 'POST' }),
+
+  reorderMovies: (orderedIds: string[]) =>
+    req<void>('/movies/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orderedIds),
+    }),
 
   addShow: (tmdbId?: number, tvmazeId?: number) =>
     req<TrackedShow>('/shows', {
