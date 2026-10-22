@@ -47,6 +47,81 @@ public class TmdbProvider implements MetadataProvider {
         return apiKey != null && !apiKey.isBlank();
     }
 
+    public List<MovieSearchResult> searchMovies(String query) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/search/movie")
+                    .queryParam("api_key", apiKey)
+                    .queryParam("query", query)
+                    .queryParam("include_adult", false)
+                    .build()
+                    .encode()
+                    .toUriString();
+            JsonNode root = get(url);
+            List<MovieSearchResult> results = new ArrayList<>();
+            for (JsonNode item : root.path("results")) {
+                MovieSearchResult result = new MovieSearchResult();
+                result.tmdbId = item.path("id").asLong();
+                result.title = item.path("title").asText();
+                result.releaseDate = textOrNull(item.path("release_date"));
+                String posterPath = textOrNull(item.path("poster_path"));
+                result.poster = posterPath == null ? null : imageBaseUrl + posterPath;
+                result.overview = textOrNull(item.path("overview"));
+                results.add(result);
+            }
+            return results;
+        } catch (Exception e) {
+            throw new RuntimeException("TMDB movie search failed", e);
+        }
+    }
+
+    public MovieEntry fetchMovieDetails(long tmdbId) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/movie/" + tmdbId)
+                    .queryParam("api_key", apiKey)
+                    .queryParam("append_to_response", "credits,external_ids")
+                    .build()
+                    .encode()
+                    .toUriString();
+            JsonNode root = get(url);
+            if (root.path("id").asLong(-1) != tmdbId) {
+                throw new IllegalArgumentException("TMDB returned no movie for id=" + tmdbId);
+            }
+
+            MovieEntry movie = new MovieEntry();
+            movie.tmdbId = tmdbId;
+            movie.title = textOrNull(root.path("title"));
+            movie.releaseDate = textOrNull(root.path("release_date"));
+            movie.runtime = root.path("runtime").canConvertToInt() ? root.path("runtime").asInt() : null;
+            String posterPath = textOrNull(root.path("poster_path"));
+            movie.poster = posterPath == null ? null : imageBaseUrl + posterPath;
+
+            String externalImdbId = textOrNull(root.path("external_ids").path("imdb_id"));
+            movie.imdbId = externalImdbId != null ? externalImdbId : textOrNull(root.path("imdb_id"));
+
+            JsonNode cast = root.path("credits").path("cast");
+            if (cast.isArray()) {
+                for (JsonNode item : cast) {
+                    if (movie.cast.size() >= 5) {
+                        break;
+                    }
+                    String name = textOrNull(item.path("name"));
+                    if (name == null) {
+                        continue;
+                    }
+                    long personId = item.path("id").asLong(0);
+                    String profilePath = textOrNull(item.path("profile_path"));
+                    movie.cast.add(new Actor(
+                            name,
+                            profilePath == null ? null : imageBaseUrl + profilePath,
+                            buildActorLink(personId)));
+                }
+            }
+            return movie;
+        } catch (Exception e) {
+            throw new RuntimeException("TMDB fetchMovieDetails failed for id=" + tmdbId, e);
+        }
+    }
+
     @Override
     public List<ShowSearchResult> search(String query) {
         try {
@@ -260,5 +335,13 @@ public class TmdbProvider implements MetadataProvider {
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) throw new RuntimeException("HTTP " + resp.statusCode());
         return mapper.readTree(resp.body());
+    }
+
+    private static String textOrNull(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String value = node.asText();
+        return value.isBlank() ? null : value;
     }
 }

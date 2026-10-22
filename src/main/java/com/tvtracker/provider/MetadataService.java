@@ -1,6 +1,8 @@
 package com.tvtracker.provider;
 
 import com.tvtracker.model.Season;
+import com.tvtracker.model.MovieEntry;
+import com.tvtracker.model.MovieSearchResult;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
 import java.util.concurrent.CompletableFuture;
@@ -50,6 +52,24 @@ public class MetadataService {
       }
     }
     return tvmaze.search(query);
+  }
+
+  public List<MovieSearchResult> searchMovies(String query) {
+    if (!tmdb.isConfigured()) {
+      throw new IllegalStateException("TMDB is not configured");
+    }
+    return tmdb.searchMovies(query);
+  }
+
+  public MovieEntry fetchMovieDetails(long tmdbId) {
+    if (!tmdb.isConfigured()) {
+      throw new IllegalStateException("TMDB is not configured");
+    }
+    MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
+    if (omdb != null && omdb.isConfigured()) {
+      omdb.enrichMovie(movie);
+    }
+    return movie;
   }
 
   public void hydrateMissingTmdbId(TrackedShow show) {

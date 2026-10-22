@@ -2,6 +2,7 @@ package com.tvtracker.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import org.slf4j.Logger;
@@ -14,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
 public class OmdbProvider {
@@ -66,6 +68,32 @@ public class OmdbProvider {
             log.debug("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
         } catch (Exception e) {
             log.warn("OMDb enrichShow failed for '{}': {}", show.title, e.getMessage());
+        }
+    }
+
+    public void enrichMovie(MovieEntry movie) {
+        if (!isConfigured() || movie.imdbId == null || movie.imdbId.isBlank()) {
+            return;
+        }
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl)
+                    .queryParam("apikey", apiKey)
+                    .queryParam("i", movie.imdbId)
+                    .queryParam("type", "movie")
+                    .build()
+                    .encode()
+                    .toUriString();
+            JsonNode root = get(url);
+            if (!"True".equals(root.path("Response").asText())) {
+                log.debug("OMDb no result for movie imdbId={}", movie.imdbId);
+                return;
+            }
+            movie.imdbRating = parseImdb(root);
+            movie.rottenTomatoesScore = parseRt(root);
+            log.debug("OMDb enriched movie '{}': imdb={} rt={}",
+                    movie.title, movie.imdbRating, movie.rottenTomatoesScore);
+        } catch (Exception e) {
+            log.warn("OMDb enrichMovie failed for '{}': {}", movie.title, e.getMessage());
         }
     }
 

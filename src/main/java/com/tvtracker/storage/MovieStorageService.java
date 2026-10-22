@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -94,18 +93,22 @@ public class MovieStorageService {
         return movie;
     }
 
-    public synchronized MovieEntry saveIfTmdbIdAbsent(String userId, MovieEntry movie) throws IOException {
+    public synchronized AddResult saveIfTmdbIdAbsent(String userId, MovieEntry movie) throws IOException {
         Objects.requireNonNull(movie, "movie");
         Objects.requireNonNull(movie.tmdbId, "movie.tmdbId");
         Optional<MovieEntry> existing = load(userId).stream()
                 .filter(candidate -> Objects.equals(candidate.tmdbId, movie.tmdbId))
                 .findFirst();
-        return existing.isPresent() ? existing.get() : save(userId, movie);
+        return existing.isPresent()
+                ? new AddResult(existing.get(), false)
+                : new AddResult(save(userId, movie), true);
     }
 
-    public synchronized MovieEntry saveIfTmdbIdAbsent(MovieEntry movie) throws IOException {
+    public synchronized AddResult saveIfTmdbIdAbsent(MovieEntry movie) throws IOException {
         return saveIfTmdbIdAbsent("default", movie);
     }
+
+    public record AddResult(MovieEntry movie, boolean created) {}
 
     public synchronized boolean delete(String id) throws IOException {
         return delete("default", id);
@@ -169,13 +172,10 @@ public class MovieStorageService {
 
     private void writeMoviesToFile(Path file, List<MovieEntry> movies) throws IOException {
         Path parent = file.getParent();
-        if (Files.notExists(parent)) {
-            Files.createDirectories(parent);
-            setPosixPermissionsIfSupported(parent, "rwx------");
-        }
-        Path tempFile = Files.createTempFile(parent, file.getFileName() + ".", ".tmp");
+        Files.createDirectories(parent);
+        Path tempFile = parent.resolve(file.getFileName() + "." + UUID.randomUUID() + ".tmp");
+        Files.createFile(tempFile);
         try {
-            setPosixPermissionsIfSupported(tempFile, "rw-------");
             mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), movies);
             try {
                 Files.move(tempFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -184,14 +184,6 @@ public class MovieStorageService {
             }
         } finally {
             Files.deleteIfExists(tempFile);
-        }
-    }
-
-    private static void setPosixPermissionsIfSupported(Path path, String permissions) throws IOException {
-        try {
-            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(permissions));
-        } catch (UnsupportedOperationException ignored) {
-            // Non-POSIX filesystems use their inherited platform ACLs.
         }
     }
 

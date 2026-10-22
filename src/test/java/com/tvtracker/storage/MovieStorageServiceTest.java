@@ -3,13 +3,13 @@ package com.tvtracker.storage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.controller.SseController;
 import com.tvtracker.model.MovieEntry;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -95,14 +95,16 @@ class MovieStorageServiceTest {
         MovieEntry original = movie("Arrival");
         original.tmdbId = 123L;
 
-        MovieEntry inserted = storage.saveIfTmdbIdAbsent("alice", original);
+        MovieStorageService.AddResult inserted = storage.saveIfTmdbIdAbsent("alice", original);
         MovieEntry duplicate = movie("Different local state");
         duplicate.tmdbId = 123L;
 
-        MovieEntry result = storage.saveIfTmdbIdAbsent("alice", duplicate);
+        MovieStorageService.AddResult result = storage.saveIfTmdbIdAbsent("alice", duplicate);
 
-        assertEquals(inserted.id, result.id);
-        assertEquals("Arrival", result.title);
+        assertTrue(inserted.created());
+        assertFalse(result.created());
+        assertEquals(inserted.movie().id, result.movie().id);
+        assertEquals("Arrival", result.movie().title);
         assertEquals(1, storage.load("alice").size());
     }
 
@@ -232,30 +234,30 @@ class MovieStorageServiceTest {
     }
 
     @Test
-    void storedMovieFileHasOwnerOnlyPosixPermissionsWhenSupported() throws Exception {
-        MovieStorageService storage = createService(tempDir.resolve("users"));
-        MovieEntry movie = movie("Private movie file");
-        movie.tmdbId = 47L;
+    void movieFilesUseTheSameDefaultPermissionsAsShowFilesWhenSupported() throws Exception {
+        Path showRoot = tempDir.resolve("users");
+        new JsonStorageService(showRoot.toString(), new ObjectMapper(), mock(SseController.class));
+        MovieStorageService storage = createService(showRoot);
+        MovieEntry movie = movie("Permission parity");
+
         storage.save("alice", movie);
 
+        Path showFile = showRoot.resolve("default.json");
         Path movieFile = tempDir.resolve("movies").resolve("alice.json");
-        if (Files.getFileStore(movieFile).supportsFileAttributeView("posix")) {
-            assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(movieFile));
-            assertEquals(PosixFilePermissions.fromString("rwx------"),
-                    Files.getPosixFilePermissions(movieFile.getParent()));
-        }
+        Assumptions.assumeTrue(Files.getFileStore(showFile).supportsFileAttributeView("posix"));
+        assertEquals(Files.getPosixFilePermissions(showFile), Files.getPosixFilePermissions(movieFile));
     }
 
     @Test
     void defaultMoviePathIsSiblingOfShowRootOnMountedDataVolume() {
-        assertEquals(Path.of("/data/movies").toAbsolutePath().normalize(),
-                MovieStorageService.resolveMoviesRoot("/data/users/", ""));
+        assertEquals(Path.of("/app/data/movies").toAbsolutePath().normalize(),
+                MovieStorageService.resolveMoviesRoot("/app/data/users/", ""));
     }
 
     @Test
     void configuredDockerMoviePathIsInsideMountedDataVolume() {
-        assertEquals(Path.of("/data/movies").toAbsolutePath().normalize(),
-                MovieStorageService.resolveMoviesRoot("/data/users/", "/data/movies/"));
+        assertEquals(Path.of("/app/data/movies").toAbsolutePath().normalize(),
+                MovieStorageService.resolveMoviesRoot("/app/data/users/", "/app/data/movies/"));
     }
 
     @Test
