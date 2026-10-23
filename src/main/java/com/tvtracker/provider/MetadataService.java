@@ -2,10 +2,12 @@ package com.tvtracker.provider;
 
 import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.Season;
+import com.tvtracker.model.Actor;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieSearchResult;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
@@ -13,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,20 +36,50 @@ public class MetadataService {
   private final TvMazeProvider tvmaze;
   private final OmdbProvider omdb;
 
-  // Short-lived in-memory cache for fetchDetails (keyed by "tmdb:ID" or "tvmaze:ID").
-  // Entries expire after CACHE_TTL_MS. Used to avoid redundant API calls when the user
-  // opens the same search preview or popular card multiple times in one session.
-  private static final long CACHE_TTL_MS = 60 * 60 * 1000L; // 1 hour
   private final Map<String, CachedShow> detailsCache = new ConcurrentHashMap<>();
+  private final Map<Long, CachedMovie> movieDetailsCache = new ConcurrentHashMap<>();
+  private final Duration showDetailsTtl;
+  private final Duration popularTtl;
+  private final Duration movieDetailsTtl;
+  private final int cacheMaxEntries;
+  private final int popularMaxEntries;
+  private volatile CachedPopular popularCache;
 
-  private record CachedShow(TrackedShow show, long fetchedAt) {
-    boolean isExpired() { return System.currentTimeMillis() - fetchedAt > CACHE_TTL_MS; }
+  private record CachedShow(TrackedShow show, Instant fetchedAt) {
+    boolean isExpired(Duration ttl) { return fetchedAt.plus(ttl).isBefore(Instant.now()); }
+  }
+
+  private record CachedMovie(MovieMetadataResult result, Instant fetchedAt) {
+    boolean isExpired(Duration ttl) { return fetchedAt.plus(ttl).isBefore(Instant.now()); }
+  }
+
+  private record CachedPopular(List<ShowSearchResult> shows, Instant fetchedAt) {
+    boolean isExpired(Duration ttl) { return fetchedAt.plus(ttl).isBefore(Instant.now()); }
   }
 
   public MetadataService(TmdbProvider tmdb, TvMazeProvider tvmaze, OmdbProvider omdb) {
+    this(tmdb, tvmaze, omdb, Duration.ofHours(12), Duration.ofHours(6),
+        Duration.ofHours(12), 1000, 100);
+  }
+
+  @Autowired
+  public MetadataService(
+      TmdbProvider tmdb,
+      TvMazeProvider tvmaze,
+      OmdbProvider omdb,
+      @Value("${app.cache.show-details-ttl:PT12H}") Duration showDetailsTtl,
+      @Value("${app.cache.popular-ttl:PT6H}") Duration popularTtl,
+      @Value("${app.cache.movie-details-ttl:PT12H}") Duration movieDetailsTtl,
+      @Value("${app.cache.max-entries:1000}") int cacheMaxEntries,
+      @Value("${app.cache.popular-max-entries:100}") int popularMaxEntries) {
     this.tmdb = tmdb;
     this.tvmaze = tvmaze;
     this.omdb = omdb;
+    this.showDetailsTtl = showDetailsTtl;
+    this.popularTtl = popularTtl;
+    this.movieDetailsTtl = movieDetailsTtl;
+    this.cacheMaxEntries = Math.max(1, cacheMaxEntries);
+    this.popularMaxEntries = Math.max(1, popularMaxEntries);
   }
 
   public List<ShowSearchResult> search(String query) {
@@ -67,36 +104,101 @@ public class MetadataService {
   }
 
   public MovieMetadataResult fetchMovieDetails(long tmdbId, boolean allowOmdb) {
+    return fetchMovieDetails(tmdbId, allowOmdb, false);
+  }
+
+  public MovieMetadataResult fetchMovieDetailsFresh(long tmdbId, boolean allowOmdb) {
+    return fetchMovieDetails(tmdbId, allowOmdb, true);
+  }
+
+  private MovieMetadataResult fetchMovieDetails(long tmdbId, boolean allowOmdb, boolean forceRefresh) {
     if (!tmdb.isConfigured()) {
       throw new UpstreamServiceException("TMDB is not configured");
     }
-    MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
-    if (!isMovieOmdbEnrichmentApplicable(movie)) {
-      return new MovieMetadataResult(movie, true, false);
+    CachedMovie cached = movieDetailsCache.get(tmdbId);
+    if (!forceRefresh && cached != null && !cached.isExpired(movieDetailsTtl)) {
+      if (allowOmdb && !cached.result().ratingsRefreshed()
+          && hasNoMovieRatings(cached.result().movie())
+          && !omdb.isBackoffActive()
+          && isMovieOmdbEnrichmentApplicable(cached.result().movie())) {
+        return retryMovieRatingsFromCache(tmdbId, cached);
+      }
+      return new MovieMetadataResult(copyMovie(cached.result().movie()),
+          cached.result().ratingsRefreshed(), false);
     }
-    if (!allowOmdb) {
-      return new MovieMetadataResult(movie, false, false);
+
+    try {
+      MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
+      MovieMetadataResult result;
+      if (!isMovieOmdbEnrichmentApplicable(movie) || !allowOmdb) {
+        result = new MovieMetadataResult(movie, true, false);
+      } else {
+        try {
+          omdb.enrichMovie(movie);
+          result = new MovieMetadataResult(movie, true, true);
+        } catch (UpstreamServiceException e) {
+          if (omdb.isBackoffActive()) {
+            log.debug("OMDb ratings for movie '{}' deferred while quota backoff is active", movie.title);
+          } else {
+            log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
+                movie.title, e.getMessage());
+          }
+          boolean requestAttempted = e instanceof OmdbProvider.MovieEnrichmentException enrichmentException
+              ? enrichmentException.requestAttempted()
+              : !omdb.isBackoffActive();
+          result = new MovieMetadataResult(movie, false, requestAttempted);
+        }
+      }
+      if (cached != null) {
+        MovieEntry merged = copyMovie(cached.result().movie());
+        MovieMetadataMerger.merge(merged, movie);
+        result = new MovieMetadataResult(merged, result.ratingsRefreshed(),
+            result.omdbRequestAttempted());
+      }
+      movieDetailsCache.put(tmdbId, new CachedMovie(copyResult(result), Instant.now()));
+      trimMovieDetailsCache();
+      return copyResult(result);
+    } catch (RuntimeException e) {
+      if (cached != null) {
+        log.warn("Movie details refresh failed for TMDB id {}; returning cached metadata: {}",
+            tmdbId, e.getMessage());
+        return new MovieMetadataResult(copyMovie(cached.result().movie()), false, false);
+      }
+      throw e;
     }
+  }
+
+  private MovieMetadataResult retryMovieRatingsFromCache(long tmdbId, CachedMovie cached) {
+    MovieEntry movie = copyMovie(cached.result().movie());
     try {
       omdb.enrichMovie(movie);
-      return new MovieMetadataResult(movie, true, true);
+      MovieMetadataResult result = new MovieMetadataResult(movie, true, true);
+      movieDetailsCache.put(tmdbId, new CachedMovie(copyResult(result), Instant.now()));
+      return copyResult(result);
     } catch (UpstreamServiceException e) {
-      if (omdb.isBackoffActive()) {
-        log.debug("OMDb ratings for movie '{}' deferred while quota backoff is active", movie.title);
-      } else {
-        log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
-            movie.title, e.getMessage());
-      }
-      boolean requestAttempted = e instanceof OmdbProvider.MovieEnrichmentException enrichmentException
-          ? enrichmentException.requestAttempted()
-          : !omdb.isBackoffActive();
-      return new MovieMetadataResult(movie, false, requestAttempted);
+      log.warn("OMDb retry failed for movie '{}'; returning cached TMDB metadata: {}",
+          movie.title, e.getMessage());
+      return new MovieMetadataResult(copyMovie(cached.result().movie()), false, false);
     }
   }
 
   public boolean isMovieOmdbEnrichmentApplicable(MovieEntry movie) {
     return movie != null && movie.imdbId != null && !movie.imdbId.isBlank()
-        && omdb != null && omdb.isConfigured();
+        && isMovieReleased(movie.releaseDate) && omdb != null && omdb.isConfigured();
+  }
+
+  private static boolean hasNoMovieRatings(MovieEntry movie) {
+    return (movie.imdbRating == null || movie.imdbRating.isBlank())
+        && (movie.rottenTomatoesScore == null || movie.rottenTomatoesScore.isBlank());
+  }
+
+  private boolean isMovieReleased(String releaseDate) {
+    if (releaseDate == null || releaseDate.isBlank()) return false;
+    try {
+      return !LocalDate.parse(releaseDate).isAfter(LocalDate.now());
+    } catch (DateTimeParseException e) {
+      return false;
+    }
   }
 
   public record MovieMetadataResult(
@@ -166,14 +268,23 @@ public class MetadataService {
    * hitting OMDb rate limits or generating many concurrent requests.
    */
   public TrackedShow fetchDetails(Long tmdbId, Long tvmazeId, boolean enrichRatingsFlag) {
+    return fetchDetails(tmdbId, tvmazeId, enrichRatingsFlag, false);
+  }
+
+  public TrackedShow fetchDetailsFresh(Long tmdbId, Long tvmazeId) {
+    return fetchDetails(tmdbId, tvmazeId, true, true);
+  }
+
+  private TrackedShow fetchDetails(
+      Long tmdbId, Long tvmazeId, boolean enrichRatingsFlag, boolean forceRefresh) {
     log.debug("fetchDetails: tmdbId={}, tvmazeId={}, tmdbConfigured={}, tvmazeAvailable={}",
         tmdbId, tvmazeId, tmdb.isConfigured(), tvmaze != null);
 
     // Cache lookup (skip for scheduler bulk runs where enrichRatingsFlag=false)
     String cacheKey = tmdbId != null ? "tmdb:" + tmdbId : (tvmazeId != null ? "tvmaze:" + tvmazeId : null);
-    if (enrichRatingsFlag && cacheKey != null) {
+    if (enrichRatingsFlag && !forceRefresh && cacheKey != null) {
       CachedShow cached = detailsCache.get(cacheKey);
-      if (cached != null && !cached.isExpired()) {
+      if (cached != null && !cached.isExpired(showDetailsTtl)) {
         log.debug("fetchDetails: cache hit for key={}", cacheKey);
         return cached.show().metaCopy(); // return a copy so callers can't mutate the cached entry
       }
@@ -327,23 +438,94 @@ public class MetadataService {
       log.debug("fetchDetails: merged show='{}' totalSeasons={} watchStatusFromTmdb={}",
           merged.title, merged.totalSeasons, fromTmdb.watchStatus != null);
       if (enrichRatingsFlag) enrichRatings(merged);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(merged.metaCopy(), System.currentTimeMillis()));
+      cacheShow(cacheKey, merged, enrichRatingsFlag);
       return merged;
     }
 
     if (fromTmdb != null) {
       filterZeroSeasonsAndEpisodes(fromTmdb);
       if (enrichRatingsFlag) enrichRatings(fromTmdb);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTmdb.metaCopy(), System.currentTimeMillis()));
+      cacheShow(cacheKey, fromTmdb, enrichRatingsFlag);
       return fromTmdb;
     }
     if (fromTvmaze != null) {
       filterZeroSeasonsAndEpisodes(fromTvmaze);
       if (enrichRatingsFlag) enrichRatings(fromTvmaze);
-      if (enrichRatingsFlag && cacheKey != null) detailsCache.put(cacheKey, new CachedShow(fromTvmaze.metaCopy(), System.currentTimeMillis()));
+      cacheShow(cacheKey, fromTvmaze, enrichRatingsFlag);
       return fromTvmaze;
     }
+    if (!forceRefresh && enrichRatingsFlag && cacheKey != null) {
+      CachedShow stale = detailsCache.get(cacheKey);
+      if (stale != null) {
+        log.warn("Show details refresh failed for {}; returning stale cached metadata", cacheKey);
+        return stale.show().metaCopy();
+      }
+    }
     throw new IllegalArgumentException("No valid external ID provided");
+  }
+
+  private void cacheShow(String cacheKey, TrackedShow show, boolean shouldCache) {
+    if (!shouldCache || cacheKey == null) return;
+    show.metadataLastRefreshedAt = Instant.now();
+    detailsCache.put(cacheKey, new CachedShow(show.metaCopy(), Instant.now()));
+    trimShowDetailsCache();
+  }
+
+  private void trimShowDetailsCache() {
+    detailsCache.entrySet().removeIf(entry -> entry.getValue().isExpired(showDetailsTtl));
+    while (detailsCache.size() > cacheMaxEntries) {
+      String oldestKey = detailsCache.entrySet().stream()
+          .min(Map.Entry.comparingByValue(
+              java.util.Comparator.comparing(CachedShow::fetchedAt)))
+          .map(Map.Entry::getKey)
+          .orElse(null);
+      if (oldestKey == null) return;
+      detailsCache.remove(oldestKey);
+    }
+  }
+
+  private void trimMovieDetailsCache() {
+    movieDetailsCache.entrySet().removeIf(entry -> entry.getValue().isExpired(movieDetailsTtl));
+    while (movieDetailsCache.size() > cacheMaxEntries) {
+      Long oldestKey = movieDetailsCache.entrySet().stream()
+          .min(Map.Entry.comparingByValue(
+              java.util.Comparator.comparing(CachedMovie::fetchedAt)))
+          .map(Map.Entry::getKey)
+          .orElse(null);
+      if (oldestKey == null) return;
+      movieDetailsCache.remove(oldestKey);
+    }
+  }
+
+  private static MovieMetadataResult copyResult(MovieMetadataResult result) {
+    return new MovieMetadataResult(copyMovie(result.movie()), result.ratingsRefreshed(),
+        result.omdbRequestAttempted());
+  }
+
+  private static MovieEntry copyMovie(MovieEntry source) {
+    MovieEntry copy = new MovieEntry();
+    copy.id = source.id;
+    copy.tmdbId = source.tmdbId;
+    copy.mediaType = source.mediaType;
+    copy.imdbId = source.imdbId;
+    copy.title = source.title;
+    copy.overview = source.overview;
+    copy.releaseDate = source.releaseDate;
+    copy.runtime = source.runtime;
+    copy.poster = source.poster;
+    copy.cast = new ArrayList<>();
+    if (source.cast != null) {
+      for (Actor actor : source.cast) {
+        copy.cast.add(new Actor(actor.name, actor.profilePath, actor.linkUrl));
+      }
+    }
+    copy.imdbRating = source.imdbRating;
+    copy.rottenTomatoesScore = source.rottenTomatoesScore;
+    copy.personalRating = source.personalRating;
+    copy.status = source.status;
+    copy.watchedDate = source.watchedDate;
+    copy.lastRefreshedAt = source.lastRefreshedAt;
+    return copy;
   }
 
   /** Removes season 0 and episode 0 entries from a show (in-place). */
@@ -414,12 +596,43 @@ public class MetadataService {
   }
 
   public List<ShowSearchResult> fetchPopular(int limit) {
+    if (limit <= 0) return List.of();
+    CachedPopular cached = popularCache;
+    if (cached != null && !cached.isExpired(popularTtl) && cached.shows().size() >= limit) {
+      return copyPopular(cached.shows().subList(0, limit));
+    }
     if (tmdb.isConfigured()) {
       try {
-        return tmdb.fetchPopular(limit);
-      } catch (Exception ignored) {
+        List<ShowSearchResult> fetched = tmdb.fetchPopular(Math.min(limit, popularMaxEntries));
+        if (fetched != null && !fetched.isEmpty()) {
+          if (cached == null || fetched.size() >= cached.shows().size()
+              || cached.isExpired(popularTtl)) {
+            popularCache = new CachedPopular(copyPopular(fetched), Instant.now());
+          }
+          return copyPopular(fetched.subList(0, Math.min(limit, fetched.size())));
+        }
+      } catch (Exception e) {
+        log.warn("Popular shows refresh failed; returning cached list when available: {}", e.getMessage());
       }
     }
-    return List.of();
+    return cached == null ? List.of()
+        : copyPopular(cached.shows().subList(0, Math.min(limit, cached.shows().size())));
+  }
+
+  private static List<ShowSearchResult> copyPopular(List<ShowSearchResult> shows) {
+    List<ShowSearchResult> copies = new ArrayList<>(shows.size());
+    for (ShowSearchResult show : shows) {
+      ShowSearchResult copy = new ShowSearchResult();
+      copy.tmdbId = show.tmdbId;
+      copy.tvmazeId = show.tvmazeId;
+      copy.title = show.title;
+      copy.overview = show.overview;
+      copy.posterPath = show.posterPath;
+      copy.firstAirYear = show.firstAirYear;
+      copy.totalSeasons = show.totalSeasons;
+      copy.productionStatus = show.productionStatus;
+      copies.add(copy);
+    }
+    return copies;
   }
 }

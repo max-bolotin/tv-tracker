@@ -18,7 +18,7 @@ public final class MovieMetadataMerger {
         if (fresh.title != null) {
             current.title = fresh.title;
         }
-        if (fresh.overview != null) {
+        if (fresh.overview != null && !fresh.overview.isBlank()) {
             current.overview = fresh.overview;
         }
         if (fresh.releaseDate != null) {
@@ -27,7 +27,7 @@ public final class MovieMetadataMerger {
         if (fresh.runtime != null) {
             current.runtime = fresh.runtime;
         }
-        if (fresh.poster != null) {
+        if (fresh.poster != null && !fresh.poster.isBlank()) {
             current.poster = fresh.poster;
         }
         if (fresh.cast != null && !fresh.cast.isEmpty()) {

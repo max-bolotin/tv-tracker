@@ -3,6 +3,7 @@ package com.tvtracker.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +28,7 @@ public class TrackedShow {
     public Double personalRating;     // 0.0-10.0 in 0.5 increments, null if unset
     public String ratingsUpdatedAt;  // ISO-8601 date string, null if never fetched
     public String ratingLastFetched; // new: alias / per-scheduler marker, ISO-8601, nullable
+    public Instant metadataLastRefreshedAt;
 
     public TrackedShow() {}
 
@@ -48,7 +50,13 @@ public class TrackedShow {
         c.rtRating = this.rtRating;
         c.ratingsUpdatedAt = this.ratingsUpdatedAt;
         c.ratingLastFetched = this.ratingLastFetched;
-        c.cast = this.cast == null ? new ArrayList<>() : new ArrayList<>(this.cast);
+        c.metadataLastRefreshedAt = this.metadataLastRefreshedAt;
+        c.cast = new ArrayList<>();
+        if (this.cast != null) {
+            for (Actor actor : this.cast) {
+                c.cast.add(new Actor(actor.name, actor.profilePath, actor.linkUrl));
+            }
+        }
         c.seasons = new ArrayList<>();
         if (this.seasons != null) {
             for (Season s : this.seasons) {

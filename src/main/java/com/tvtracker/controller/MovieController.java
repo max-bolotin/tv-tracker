@@ -163,7 +163,8 @@ public class MovieController {
     public MovieEntry refresh(@PathVariable String id) throws IOException {
         String userId = CurrentUserContext.currentUserId();
         MovieEntry existing = findMovie(userId, id);
-        MetadataService.MovieMetadataResult resultWithMetadata = metadata.fetchMovieDetails(existing.tmdbId);
+        MetadataService.MovieMetadataResult resultWithMetadata =
+                metadata.fetchMovieDetailsFresh(existing.tmdbId, true);
         MovieEntry fresh = resultWithMetadata.movie();
         return storage.update(userId, id, current -> {
             MovieMetadataMerger.merge(current, fresh);
