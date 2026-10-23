@@ -3,9 +3,10 @@ import { ApiRequestError, api } from '../api/client';
 
 interface Props {
   onDone: () => void; // reload shows after refresh completes
+  label?: string;
 }
 
-export function RefreshButton({ onDone }: Props) {
+export function RefreshButton({ onDone, label }: Props) {
   const [state, setState] = useState<'idle' | 'running' | 'done'>('idle');
 
   const showToast = (message: string) => {
@@ -54,8 +55,9 @@ export function RefreshButton({ onDone }: Props) {
       onClick={handleClick}
       disabled={state === 'running'}
       title="Check for new episodes now"
+      aria-label={label ?? 'Refresh'}
     >
-      {state === 'running' ? '⟳' : state === 'done' ? '✓' : '⟳'}
+      {state === 'running' ? '⟳' : state === 'done' ? '✓' : '⟳'}{label ? ` ${label}` : ''}
     </button>
   );
 }

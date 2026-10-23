@@ -720,12 +720,9 @@ export function Dashboard() {
           <header className="app-header">
             <h1>📺 TV Tracker</h1>
             <nav className="header-nav">
-              <button onClick={() => handleExport()}>Export</button>
-              <button onClick={() => importRef.current?.click()}>Import</button>
+              <ThemeSwitcher/>
               <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                      onChange={handleImport}/>
-              <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
-              <ThemeSwitcher/>
               {currentUser ? (
                   <>
                     <div className="user-pill">
@@ -738,14 +735,12 @@ export function Dashboard() {
                       )}
                       <span className="user-name">{currentUser.name}</span>
                     </div>
-                    <button onClick={() => handleSignOut()}>Log out</button>
                   </>
               ) : (
                   <button onClick={() => handleSignIn()}>Sign in with Google</button>
               )}
-              {/* Mobile hamburger */}
               <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
-                      aria-label="Open menu">☰
+                      aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>☰
               </button>
               {menuOpen && (
                   <>
@@ -753,8 +748,14 @@ export function Dashboard() {
                     <div className="mobile-menu">
                       <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
                       <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
-                      <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
-                      <ThemeSwitcher/>
+                      <RefreshButton
+                        onDone={() => {
+                          closeMobileMenu();
+                          void api.getShows().then(setAllShows);
+                        }}
+                        label="Refresh"
+                      />
+                      <div className="mobile-menu-theme-switch"><ThemeSwitcher/></div>
                       {currentUser ? (
                           <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                       ) : (
@@ -883,14 +884,14 @@ export function Dashboard() {
               <button onClick={() => handleSignIn()}>Sign in with Google</button>
               <ThemeSwitcher/>
               <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
-                      aria-label="Open menu">☰
+                      aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>☰
               </button>
               {menuOpen && (
                   <>
                     <div className="mobile-menu-backdrop" onClick={closeMobileMenu}/>
                     <div className="mobile-menu">
                       <button onClick={() => { closeMobileMenu(); handleSignIn(); }}>Sign in</button>
-                      <ThemeSwitcher/>
+                      <div className="mobile-menu-theme-switch"><ThemeSwitcher/></div>
                     </div>
                   </>
               )}
@@ -988,12 +989,9 @@ export function Dashboard() {
         <header className="app-header">
           <h1>📺 TV Tracker</h1>
           <nav className="header-nav">
-            <button onClick={handleExport}>Export</button>
-            <button onClick={() => importRef.current?.click()}>Import</button>
+            <ThemeSwitcher/>
             <input ref={importRef} type="file" accept=".json" style={{display: 'none'}}
                    onChange={handleImport}/>
-            <RefreshButton onDone={() => api.getShows().then(setAllShows)}/>
-            <ThemeSwitcher/>
             <div className="user-pill">
               {currentUser.picture ? (
                   <img src={currentUser.picture} alt={currentUser.name} className="user-avatar"/>
@@ -1003,9 +1001,8 @@ export function Dashboard() {
               )}
               <span className="user-name">{currentUser.name}</span>
             </div>
-            <button onClick={handleSignOut}>Log out</button>
             <button className="hamburger" onClick={() => menuOpen ? closeMobileMenu() : openMobileMenu()}
-                    aria-label="Open menu">☰
+                    aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>☰
             </button>
             {menuOpen && (
                 <>
@@ -1013,8 +1010,14 @@ export function Dashboard() {
                   <div className="mobile-menu">
                     <button onClick={() => { closeMobileMenu(); handleExport(); }}>Export</button>
                     <button onClick={() => { closeMobileMenu(); importRef.current?.click(); }}>Import</button>
-                    <button onClick={() => { closeMobileMenu(); api.getShows().then(setAllShows); }}>Refresh</button>
-                    <ThemeSwitcher/>
+                    <RefreshButton
+                      onDone={() => {
+                        closeMobileMenu();
+                        void api.getShows().then(setAllShows);
+                      }}
+                      label="Refresh"
+                    />
+                    <div className="mobile-menu-theme-switch"><ThemeSwitcher/></div>
                     <button onClick={() => { closeMobileMenu(); handleSignOut(); }}>Log out</button>
                   </div>
                 </>
