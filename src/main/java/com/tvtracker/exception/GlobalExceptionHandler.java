@@ -16,6 +16,34 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(errorBody(ex.getMessage()));
     }
 
+    @ExceptionHandler(MovieNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleMovieNotFound(MovieNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(errorBody(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidMovieRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidMovieRequest(InvalidMovieRequestException ex) {
+        return ResponseEntity.badRequest()
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(errorBody(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidImportException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidImport(InvalidImportException ex) {
+        return ResponseEntity.badRequest()
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(errorBody(ex.getMessage()));
+    }
+
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ResponseEntity<Map<String, Object>> handleUpstreamFailure(UpstreamServiceException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(errorBody(ex.getMessage()));
+    }
+
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleMaxUpload(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(errorBody("File too large. Increase spring.servlet.multipart.max-file-size if needed."));

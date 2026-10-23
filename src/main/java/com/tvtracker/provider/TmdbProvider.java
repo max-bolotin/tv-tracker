@@ -4,6 +4,8 @@ import static org.slf4j.LoggerFactory.getLogger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tvtracker.exception.MovieNotFoundException;
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -45,6 +47,89 @@ public class TmdbProvider implements MetadataProvider {
 
     public boolean isConfigured() {
         return apiKey != null && !apiKey.isBlank();
+    }
+
+    public List<MovieSearchResult> searchMovies(String query) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/search/movie")
+                    .queryParam("api_key", apiKey)
+                    .queryParam("query", query)
+                    .queryParam("include_adult", false)
+                    .queryParam("language", "en-US")
+                    .build()
+                    .encode()
+                    .toUriString();
+            JsonNode root = get(url);
+            List<MovieSearchResult> results = new ArrayList<>();
+            for (JsonNode item : root.path("results")) {
+                MovieSearchResult result = new MovieSearchResult();
+                result.tmdbId = item.path("id").asLong();
+                result.title = item.path("title").asText();
+                result.releaseDate = textOrNull(item.path("release_date"));
+                String posterPath = textOrNull(item.path("poster_path"));
+                result.poster = posterPath == null ? null : imageBaseUrl + posterPath;
+                result.overview = textOrNull(item.path("overview"));
+                results.add(result);
+            }
+            return results;
+        } catch (UpstreamServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UpstreamServiceException("TMDB movie search failed", e);
+        }
+    }
+
+    public MovieEntry fetchMovieDetails(long tmdbId) {
+        try {
+            String url = UriComponentsBuilder.fromUriString(baseUrl + "/movie/" + tmdbId)
+                    .queryParam("api_key", apiKey)
+                    .queryParam("append_to_response", "credits,external_ids")
+                    .queryParam("language", "en-US")
+                    .build()
+                    .encode()
+                    .toUriString();
+            JsonNode root = getMovie(url, tmdbId);
+            if (root.path("id").asLong(-1) != tmdbId) {
+                throw new MovieNotFoundException(String.valueOf(tmdbId));
+            }
+
+            MovieEntry movie = new MovieEntry();
+            movie.tmdbId = tmdbId;
+            movie.title = textOrNull(root.path("title"));
+            movie.overview = textOrNull(root.path("overview"));
+            movie.releaseDate = textOrNull(root.path("release_date"));
+            int runtime = root.path("runtime").asInt(0);
+            movie.runtime = runtime > 0 ? runtime : null;
+            String posterPath = textOrNull(root.path("poster_path"));
+            movie.poster = posterPath == null ? null : imageBaseUrl + posterPath;
+
+            String externalImdbId = textOrNull(root.path("external_ids").path("imdb_id"));
+            movie.imdbId = externalImdbId != null ? externalImdbId : textOrNull(root.path("imdb_id"));
+
+            JsonNode cast = root.path("credits").path("cast");
+            if (cast.isArray()) {
+                for (JsonNode item : cast) {
+                    if (movie.cast.size() >= 5) {
+                        break;
+                    }
+                    String name = textOrNull(item.path("name"));
+                    if (name == null) {
+                        continue;
+                    }
+                    long personId = item.path("id").asLong(0);
+                    String profilePath = textOrNull(item.path("profile_path"));
+                    movie.cast.add(new Actor(
+                            name,
+                            profilePath == null ? null : imageBaseUrl + profilePath,
+                            buildActorLink(personId)));
+                }
+            }
+            return movie;
+        } catch (MovieNotFoundException | UpstreamServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new UpstreamServiceException("TMDB fetchMovieDetails failed for id=" + tmdbId, e);
+        }
     }
 
     @Override
@@ -260,5 +345,25 @@ public class TmdbProvider implements MetadataProvider {
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) throw new RuntimeException("HTTP " + resp.statusCode());
         return mapper.readTree(resp.body());
+    }
+
+    private JsonNode getMovie(String url, long tmdbId) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 404) {
+            throw new MovieNotFoundException(String.valueOf(tmdbId));
+        }
+        if (resp.statusCode() != 200) {
+            throw new UpstreamServiceException("TMDB movie request failed with HTTP " + resp.statusCode());
+        }
+        return mapper.readTree(resp.body());
+    }
+
+    private static String textOrNull(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String value = node.asText();
+        return value.isBlank() ? null : value;
     }
 }

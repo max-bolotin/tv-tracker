@@ -80,10 +80,22 @@ API Endpoints
 | PATCH | `/api/shows/{id}/seasons/{s}` | Toggle entire season `{ watched }` |
 | GET | `/api/shows/search?q=` | Search external APIs |
 | GET | `/api/shows/popular?limit={n}` | Get up to `n` popular/trending shows from TMDB (unauthenticated) |
+| GET | `/api/movies/search?q=` | Search movies in TMDB (unauthenticated) |
+| GET | `/api/movies/details?tmdbId=` | Get movie details for a search preview (unauthenticated) |
+| GET | `/api/movies` | List tracked movies (optional `?status=PLANNED` or `?status=WATCHED`) |
+| GET | `/api/movies/{id}` | Get a tracked movie |
+| POST | `/api/movies` | Track movie `{ tmdbId }` |
+| PATCH | `/api/movies/{id}/status` | Update movie status `{ status }` |
+| PATCH | `/api/movies/{id}/rating` | Set personal rating `{ personalRating }` |
+| DELETE | `/api/movies/{id}` | Remove a tracked movie |
+| PUT | `/api/movies/reorder` | Reorder tracked movies (JSON array of IDs) |
+| POST | `/api/movies/{id}/refresh` | Refresh a movie's metadata |
 | GET | `/api/data/export` | Download JSON backup |
 | POST | `/api/data/import` | Upload JSON backup (multipart) |
 
 Notes
 - The app stores per-user data in `./data/users/{userId}.json`. For legacy single-file installs the app still supports a single JSON file (automatic migration planned).
+- Imports keep the immediately previous version of each replaced data file in a sibling `.bak` file (for example `users/{userId}.json.bak` and `movies/{userId}.json.bak`). To restore a backup, stop the app, copy the desired `.bak` file over its matching `.json` file, then restart the app.
+- Exports include saved show and season ratings. Imports make no metadata API calls; older backups still import, but any details or ratings they do not contain remain missing.
 - To customize upload limits in production, set the environment variables shown above — do not edit the packaged JAR.
 - Frontend file-size validation uses Vite env var `VITE_MAX_UPLOAD_BYTES` (bytes). Set this at build time if you want the client to enforce a different limit, e.g.: `VITE_MAX_UPLOAD_BYTES=104857600 npm run build`.

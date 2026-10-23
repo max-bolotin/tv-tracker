@@ -1,5 +1,36 @@
 export type WatchStatus = 'WATCHING_NOW' | 'NOT_WATCHED' | 'UP_TO_DATE' | 'FINISHED' | 'DROPPED';
 export type ProductionStatus = 'ONGOING' | 'ENDED';
+export type MovieStatus = 'PLANNED' | 'WATCHED';
+
+export interface MovieEntry {
+  id: string;
+  tmdbId: number;
+  imdbId?: string;
+  title: string;
+  overview?: string;
+  releaseDate?: string;
+  runtime?: number;
+  poster?: string;
+  cast?: Actor[];
+  imdbRating?: string;
+  rottenTomatoesScore?: string;
+  personalRating?: number | null;
+  status: MovieStatus;
+  watchedDate?: string;
+  lastRefreshedAt?: string;
+}
+
+export interface MoviePreview extends Omit<MovieEntry, 'id'> {
+  id?: string;
+}
+
+export interface MovieSearchResult {
+  tmdbId: number;
+  title: string;
+  releaseDate?: string;
+  poster?: string;
+  overview?: string;
+}
 
 export interface Episode {
   number: number;

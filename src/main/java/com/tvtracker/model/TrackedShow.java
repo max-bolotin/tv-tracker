@@ -1,6 +1,8 @@
 package com.tvtracker.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,6 +10,7 @@ import java.util.List;
 public class TrackedShow {
     public String id;           // internal UUID
     public Long tmdbId;
+    public MediaType mediaType = MediaType.TV;
     public Long tvmazeId;
     public String imdbId;
     public String title;
@@ -31,6 +34,7 @@ public class TrackedShow {
     public TrackedShow metaCopy() {
         TrackedShow c = new TrackedShow();
         c.tmdbId = this.tmdbId;
+        c.mediaType = this.mediaType;
         c.tvmazeId = this.tvmazeId;
         c.imdbId = this.imdbId;
         c.title = this.title;
@@ -113,6 +117,9 @@ public class TrackedShow {
     public void setId(String id) { this.id = id; }
     public Long getTmdbId() { return tmdbId; }
     public void setTmdbId(Long tmdbId) { this.tmdbId = tmdbId; }
+    public MediaType getMediaType() { return mediaType; }
+    @JsonSetter(value = "mediaType", nulls = Nulls.SKIP)
+    public void setMediaType(MediaType mediaType) { this.mediaType = mediaType; }
     public Long getTvmazeId() { return tvmazeId; }
     public void setTvmazeId(Long tvmazeId) { this.tvmazeId = tvmazeId; }
     // Kept intentionally for future compatibility (e.g. storing IMDB ratings / integration).

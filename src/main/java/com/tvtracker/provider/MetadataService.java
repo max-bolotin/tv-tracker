@@ -1,6 +1,9 @@
 package com.tvtracker.provider;
 
+import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.Season;
+import com.tvtracker.model.MovieEntry;
+import com.tvtracker.model.MovieSearchResult;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
 import java.util.concurrent.CompletableFuture;
@@ -50,6 +53,57 @@ public class MetadataService {
       }
     }
     return tvmaze.search(query);
+  }
+
+  public List<MovieSearchResult> searchMovies(String query) {
+    if (!tmdb.isConfigured()) {
+      throw new UpstreamServiceException("TMDB is not configured");
+    }
+    return tmdb.searchMovies(query);
+  }
+
+  public MovieMetadataResult fetchMovieDetails(long tmdbId) {
+    return fetchMovieDetails(tmdbId, true);
+  }
+
+  public MovieMetadataResult fetchMovieDetails(long tmdbId, boolean allowOmdb) {
+    if (!tmdb.isConfigured()) {
+      throw new UpstreamServiceException("TMDB is not configured");
+    }
+    MovieEntry movie = tmdb.fetchMovieDetails(tmdbId);
+    if (!isMovieOmdbEnrichmentApplicable(movie)) {
+      return new MovieMetadataResult(movie, true, false);
+    }
+    if (!allowOmdb) {
+      return new MovieMetadataResult(movie, false, false);
+    }
+    try {
+      omdb.enrichMovie(movie);
+      return new MovieMetadataResult(movie, true, true);
+    } catch (UpstreamServiceException e) {
+      if (omdb.isBackoffActive()) {
+        log.debug("OMDb ratings for movie '{}' deferred while quota backoff is active", movie.title);
+      } else {
+        log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
+            movie.title, e.getMessage());
+      }
+      boolean requestAttempted = e instanceof OmdbProvider.MovieEnrichmentException enrichmentException
+          ? enrichmentException.requestAttempted()
+          : !omdb.isBackoffActive();
+      return new MovieMetadataResult(movie, false, requestAttempted);
+    }
+  }
+
+  public boolean isMovieOmdbEnrichmentApplicable(MovieEntry movie) {
+    return movie != null && movie.imdbId != null && !movie.imdbId.isBlank()
+        && omdb != null && omdb.isConfigured();
+  }
+
+  public record MovieMetadataResult(
+      MovieEntry movie, boolean ratingsRefreshed, boolean omdbRequestAttempted) {
+    public MovieMetadataResult(MovieEntry movie, boolean ratingsRefreshed) {
+      this(movie, ratingsRefreshed, ratingsRefreshed);
+    }
   }
 
   public void hydrateMissingTmdbId(TrackedShow show) {
@@ -142,7 +196,7 @@ public class MetadataService {
       fTmdb = CompletableFuture.completedFuture(null);
     }
 
-    if (tvmazeId != null) {
+    if (tvmaze != null && tvmazeId != null) {
       fTvmaze = CompletableFuture.supplyAsync(() -> {
         try {
           return tvmaze.fetchDetails(tvmazeId);

@@ -9,6 +9,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 @Service
@@ -77,6 +81,15 @@ public class JsonStorageService {
         return shows;
     }
 
+    public synchronized List<TrackedShow> loadForImport(String userId) throws IOException {
+        File file = resolveUserFile(userId);
+        if (!file.exists()) {
+            return new ArrayList<>();
+        }
+        List<TrackedShow> shows = mapper.readValue(file, new TypeReference<>() {});
+        return shows == null ? new ArrayList<>() : shows;
+    }
+
     private void writeShowsToFile(File file, List<TrackedShow> shows, boolean broadcast) throws IOException {
         ensureParentDirectory(file);
         mapper.writerWithDefaultPrettyPrinter().writeValue(file, shows);
@@ -90,6 +103,13 @@ public class JsonStorageService {
     public synchronized void saveAll(String userId, List<TrackedShow> shows) throws IOException {
         File file = resolveUserFile(userId);
         writeShowsToFile(file, shows, true);
+    }
+
+    public synchronized void replaceForImport(String userId, List<TrackedShow> shows) throws IOException {
+        Path file = resolveUserFile(userId).toPath();
+        byte[] content = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(shows);
+        backupBeforeImport(file);
+        writeAtomically(file, content);
     }
 
     public synchronized Optional<TrackedShow> findById(String id) throws IOException {
@@ -198,6 +218,33 @@ public class JsonStorageService {
         File parent = file.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             throw new IllegalStateException("Failed to create storage directory: " + parent.getAbsolutePath());
+        }
+    }
+
+    private void backupBeforeImport(Path file) throws IOException {
+        if (Files.exists(file)) {
+            Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"),
+                    StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            Files.deleteIfExists(file.resolveSibling(file.getFileName() + ".bak"));
+        }
+    }
+
+    private void writeAtomically(Path file, byte[] content) throws IOException {
+        Path parent = file.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Path temp = file.resolveSibling(file.getFileName() + "." + UUID.randomUUID() + ".tmp");
+        try {
+            Files.write(temp, content);
+            try {
+                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
         }
     }
 }
