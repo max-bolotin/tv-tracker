@@ -213,8 +213,10 @@ export function Dashboard() {
       api.getPopular(limit + cols).then(shows => {
         const unique = dedupeShows(shows);
         // Trim to exactly `limit` (full rows)
-        setPopularShows(unique.slice(0, limit));
-      }).catch(() => setPopularShows([]));
+        if (unique.length > 0) setPopularShows(unique.slice(0, limit));
+      }).catch(error => {
+        console.warn('Failed to refresh popular shows; keeping the last displayed list.', error);
+      });
     }
 
     // Defer so the grid DOM is painted and popularRef has the correct width
@@ -521,12 +523,14 @@ export function Dashboard() {
   // Note: reuses importToast state — a new toast will replace any currently visible one
   const toastTimer = useRef<number | null>(null);
   useEffect(() => {
-    const h = (e: any) => {
+    const h = (e: CustomEvent<string | { message: string; durationMs?: number }>) => {
       // clear previous timer
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
-      setImportToast(e.detail as string);
-      // auto-hide after 10s
-      toastTimer.current = window.setTimeout(() => setImportToast(null), 10000);
+      const detail = e.detail;
+      const message = typeof detail === 'string' ? detail : detail.message;
+      const durationMs = typeof detail === 'string' ? 10000 : detail.durationMs ?? 10000;
+      setImportToast(message);
+      toastTimer.current = window.setTimeout(() => setImportToast(null), durationMs);
     };
     window.addEventListener('app-toast', h as EventListener);
     return () => {
@@ -568,13 +572,15 @@ export function Dashboard() {
   };
 
   const handleRefreshShow = async (id: string) => {
-    const show = allShows.find(s => s.id === id);
     try {
-      const updated = await api.refreshShow(id);
+      const updated = await api.refreshShow(id, true);
       setAllShows(prev => prev.map(s => s.id === id ? updated : s));
       if (selected?.id === id) setSelected(updated);
-    } catch {
-      if (show) searchBarRef.current?.triggerSearch(show.title);
+    } catch (error) {
+      console.warn('Manual show refresh failed; keeping stored metadata.', error);
+      window.dispatchEvent(new CustomEvent('app-toast', {
+        detail: { message: 'Could not refresh this show. Existing data was kept.', durationMs: 4000 },
+      }));
     }
   };
 

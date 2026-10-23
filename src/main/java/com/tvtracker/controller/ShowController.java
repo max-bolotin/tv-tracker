@@ -12,8 +12,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/api/shows")
@@ -21,12 +26,25 @@ public class ShowController {
 
   private final JsonStorageService storage;
   private final MetadataService metadata;
+  private final Clock clock;
+  private final Duration showDetailsTtl;
   private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(
       ShowController.class);
 
   public ShowController(JsonStorageService storage, MetadataService metadata) {
+    this(storage, metadata, Clock.systemUTC(), Duration.ofHours(12));
+  }
+
+  @Autowired
+  public ShowController(
+      JsonStorageService storage,
+      MetadataService metadata,
+      Clock clock,
+      @Value("${app.cache.show-details-ttl:PT12H}") Duration showDetailsTtl) {
     this.storage = storage;
     this.metadata = metadata;
+    this.clock = clock;
+    this.showDetailsTtl = showDetailsTtl;
   }
 
   @GetMapping("/popular")
@@ -80,6 +98,9 @@ public class ShowController {
       if (req.tvmazeId() != null && req.tvmazeId().equals(s.tvmazeId)) return s;
     }
     TrackedShow show = metadata.fetchDetails(req.tmdbId(), req.tvmazeId());
+    if (show.metadataLastRefreshedAt == null) {
+      show.metadataLastRefreshedAt = clock.instant();
+    }
     show.id = UUID.randomUUID().toString();
     show.watchStatus = WatchStatus.NOT_WATCHED;
     return storage.save(userId, show, true);
@@ -190,32 +211,41 @@ public class ShowController {
     return ResponseEntity.noContent().build();
   }
 
-  private static final long REFRESH_COOLDOWN_MS = 60 * 60 * 1000L; // 1 hour
-  // showId -> last refresh timestamp
-  private final java.util.concurrent.ConcurrentHashMap<String, Long> lastRefreshed = new java.util.concurrent.ConcurrentHashMap<>();
-
   @PostMapping("/{id}/refresh")
-  public TrackedShow refreshShow(@PathVariable String id) throws IOException {
+  public TrackedShow refreshShow(
+      @PathVariable String id, @RequestParam(defaultValue = "false") boolean force) throws IOException {
     String userId = CurrentUserContext.currentUserId();
     TrackedShow existing = storage.findById(userId, id)
         .orElseThrow(() -> new ShowNotFoundException(id));
 
-    // Return cached version if refreshed recently
-    long now = System.currentTimeMillis();
-    Long last = lastRefreshed.get(id);
-    if (last != null && (now - last) < REFRESH_COOLDOWN_MS) {
-      log.debug("refreshShow: skipping refresh for '{}' (refreshed {}s ago)", existing.title, (now - last) / 1000);
+    Instant now = clock.instant();
+    if (!force && existing.metadataLastRefreshedAt != null
+        && existing.metadataLastRefreshedAt.plus(showDetailsTtl).isAfter(now)) {
+      log.debug("refreshShow: skipping fresh show '{}'", existing.title);
       return existing;
     }
     if (existing.tmdbId == null) {
       metadata.hydrateMissingTmdbId(existing);
     }
-    TrackedShow fresh = metadata.fetchDetails(existing.tmdbId, existing.tvmazeId);
+    TrackedShow fresh = metadata.fetchDetailsFresh(existing.tmdbId, existing.tvmazeId);
     fresh.id = existing.id;
     fresh.watchStatus = existing.watchStatus;
     fresh.personalRating = existing.personalRating;
+    fresh.imdbId = nonBlankOrExisting(fresh.imdbId, existing.imdbId);
+    fresh.imdbRating = nonBlankOrExisting(fresh.imdbRating, existing.imdbRating);
+    fresh.rtRating = nonBlankOrExisting(fresh.rtRating, existing.rtRating);
+    fresh.ratingLastFetched = nonBlankOrExisting(fresh.ratingLastFetched, existing.ratingLastFetched);
+    fresh.ratingsUpdatedAt = nonBlankOrExisting(fresh.ratingsUpdatedAt, existing.ratingsUpdatedAt);
+    fresh.overview = nonBlankOrExisting(fresh.overview, existing.overview);
+    fresh.posterPath = nonBlankOrExisting(fresh.posterPath, existing.posterPath);
     if (fresh.firstAirYear == null && existing.firstAirYear != null) {
       fresh.firstAirYear = existing.firstAirYear;
+    }
+    if (fresh.title == null || fresh.title.isBlank()) {
+      fresh.title = existing.title;
+    }
+    if (fresh.totalSeasons == 0 && existing.totalSeasons > 0) {
+      fresh.totalSeasons = existing.totalSeasons;
     }
     if (fresh.cast == null) {
       fresh.cast = existing.cast != null ? existing.cast : new ArrayList<>();
@@ -225,6 +255,9 @@ public class ShowController {
       log.debug("refreshShow: keeping existing cast for '{}' because refreshed cast is empty (existing={} fresh={})",
           existing.title, existingCastSize, freshCastSize);
       fresh.cast = existing.cast;
+    }
+    if (fresh.seasons == null || fresh.seasons.isEmpty()) {
+      fresh.seasons = existing.seasons != null ? existing.seasons : new ArrayList<>();
     }
     long existingCastCount = existing.cast == null ? 0L : (long) existing.cast.size();
     long freshCastCount = fresh.cast == null ? 0L : (long) fresh.cast.size();
@@ -267,10 +300,18 @@ public class ShowController {
           e.getMessage());
     }
     boolean statusChanged = fresh.watchStatus != existing.watchStatus;
+    fresh.metadataLastRefreshedAt = now;
     TrackedShow saved = storage.save(userId, fresh, statusChanged);
-    lastRefreshed.put(id, System.currentTimeMillis());
     log.debug("refreshShow: saved show {} with watchStatus={}", saved.title, saved.watchStatus);
     return saved;
+  }
+
+  public TrackedShow refreshShow(String id) throws IOException {
+    return refreshShow(id, false);
+  }
+
+  private static String nonBlankOrExisting(String value, String existing) {
+    return value == null || value.isBlank() ? existing : value;
   }
 
   record AddShowRequest(Long tmdbId, Long tvmazeId) {

@@ -104,7 +104,7 @@ public class MovieRefreshScheduler {
                 boolean released = entry.getValue().stream()
                         .anyMatch(reference -> isReleased(reference.releaseDate(), today));
                 boolean enrichWithOmdb = released && omdbCalls < omdbMaxCallsPerRun;
-                result = metadata.fetchMovieDetails(tmdbId, enrichWithOmdb);
+                result = metadata.fetchMovieDetailsFresh(tmdbId, enrichWithOmdb);
                 if (result.omdbRequestAttempted()) {
                     omdbCalls++;
                 }

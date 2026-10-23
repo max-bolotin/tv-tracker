@@ -2,9 +2,21 @@ import type { CurrentUser, MovieEntry, MoviePreview, MovieSearchResult, TrackedS
 
 const BASE = '/api';
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(status: number, body: string) {
+    super(`HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+    this.name = 'ApiRequestError';
+  }
+}
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, options);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new ApiRequestError(res.status, await res.text());
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   try {
@@ -122,11 +134,12 @@ export const api = {
     return req<{ showsImported: number; moviesImported: number; failedTitles: string[] }>('/data/import', { method: 'POST', body: form });
   },
 
-  refresh: () => req<string>('/data/refresh', { method: 'POST' }),
+  refresh: () => req<{ message: string; nextRefreshAt: string }>('/data/refresh', { method: 'POST' }),
 
   getPopular: (limit = 20) => req<ShowSearchResult[]>(`/shows/popular?limit=${limit}`),
 
-  refreshShow: (id: string) => req<TrackedShow>(`/shows/${id}/refresh`, { method: 'POST' }),
+  refreshShow: (id: string, force = false) =>
+    req<TrackedShow>(`/shows/${id}/refresh${force ? '?force=true' : ''}`, { method: 'POST' }),
 
   reorder: (orderedIds: string[]) =>
     req<void>('/shows/reorder', {

@@ -253,12 +253,18 @@ public class DailyUpdateScheduler {
               continue;
             }
             TrackedShow rep = refs.getFirst().getValue();
+            if (rep == null) {
+              continue;
+            }
+            String ratingsBeforeFetch = rep.ratingsUpdatedAt;
             try {
               // strict mode: rethrow OMDb failures so we can stop on 401
               metadata.enrichRatings(rep, true);
-              // update both fields for compatibility
-              rep.ratingLastFetched = java.time.LocalDate.now().toString();
-              rep.ratingsUpdatedAt = rep.ratingLastFetched;
+              if (rep.ratingsUpdatedAt == null
+                  || java.util.Objects.equals(ratingsBeforeFetch, rep.ratingsUpdatedAt)) {
+                continue;
+              }
+              rep.ratingLastFetched = rep.ratingsUpdatedAt;
 
               // propagate ratings to all other user copies of the same show
               for (var ref : refs) {
@@ -340,7 +346,13 @@ public class DailyUpdateScheduler {
   /**
    * Refresh check for a specific user.
    */
-  public void doCheck(String userId) {
+  public boolean doCheck(String userId) {
+    RefreshResult result = doCheckWithResult(userId);
+    return result.completed() && !result.partialFailure();
+  }
+
+  public RefreshResult doCheckWithResult(String userId) {
+    boolean successful = true;
     try {
       List<TrackedShow> shows = storage.loadAll(userId);
       log.debug("Daily update check for user {}: totalShows={}", userId, shows.size());
@@ -386,6 +398,7 @@ public class DailyUpdateScheduler {
           metadata.enrichRatings(show);
           storage.save(userId, show, statusChanged);
         } catch (Exception e) {
+          successful = false;
           log.warn("Failed to refresh show '{}': {}", show.title, e.getMessage());
         }
       }
@@ -403,10 +416,14 @@ public class DailyUpdateScheduler {
           log.debug("Show '{}' healed: {} → {}", show.title, before, show.watchStatus);
         }
       }
+      return new RefreshResult(true, !successful);
     } catch (Exception e) {
       log.error("Daily update check failed for user {}", userId, e);
+      return new RefreshResult(false, false);
     }
   }
+
+  public record RefreshResult(boolean completed, boolean partialFailure) {}
 
   /**
    * Merges fresh metadata into existing show. Returns true if any new episodes were added.

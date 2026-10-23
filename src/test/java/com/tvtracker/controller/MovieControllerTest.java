@@ -163,7 +163,7 @@ class MovieControllerTest {
         latest.imdbRating = "8.2";
         latest.rottenTomatoesScore = "92%";
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(existing));
-        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(refreshed, true));
+        when(metadata.fetchMovieDetailsFresh(42L, true)).thenReturn(new MovieMetadataResult(refreshed, true));
         when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
             ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(latest);
             return latest;
@@ -202,7 +202,7 @@ class MovieControllerTest {
         existing.lastRefreshedAt = Instant.parse("2026-10-01T00:00:00Z");
         MovieEntry fresh = movie("Updated", 42L);
         when(storage.findById(USER_ID, "movie-id")).thenReturn(Optional.of(existing));
-        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(fresh, false));
+        when(metadata.fetchMovieDetailsFresh(42L, true)).thenReturn(new MovieMetadataResult(fresh, false));
         when(storage.update(eq(USER_ID), eq("movie-id"), any())).thenAnswer(invocation -> {
             ((Consumer<MovieEntry>) invocation.getArgument(2)).accept(existing);
             return existing;

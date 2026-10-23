@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class MetadataServiceEnrichRatingsTest {
@@ -127,5 +128,22 @@ class MetadataServiceEnrichRatingsTest {
         TrackedShow show = showWithSeasons("tt123", null, 1);
 
         service.enrichRatings(show); // must not throw
+    }
+
+    @Test
+    void fetchDetailsFreshBypassesTheShowDetailsCache() {
+        when(tmdb.isConfigured()).thenReturn(true);
+        when(omdb.isConfigured()).thenReturn(false);
+        TrackedShow first = showWithSeasons("tt123", 42L);
+        first.title = "Cached title";
+        TrackedShow second = showWithSeasons("tt123", 42L);
+        second.title = "Fresh title";
+        when(tmdb.fetchDetails(42L)).thenReturn(first, second);
+
+        assertThat(service.fetchDetails(42L, null).title).isEqualTo("Cached title");
+        assertThat(service.fetchDetails(42L, null).title).isEqualTo("Cached title");
+        assertThat(service.fetchDetailsFresh(42L, null).title).isEqualTo("Fresh title");
+
+        verify(tmdb, times(2)).fetchDetails(42L);
     }
 }

@@ -95,7 +95,7 @@ class MovieRefreshSchedulerTest {
         fresh.cast = new java.util.ArrayList<>();
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(existing));
-        when(metadata.fetchMovieDetails(1L, true)).thenReturn(new MovieMetadataResult(fresh, false));
+        when(metadata.fetchMovieDetailsFresh(1L, true)).thenReturn(new MovieMetadataResult(fresh, false));
         when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
@@ -117,9 +117,9 @@ class MovieRefreshSchedulerTest {
         healthy.id = "healthy";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(missing, healthy));
-        when(metadata.fetchMovieDetails(1L, false)).thenThrow(new MovieNotFoundException("1"));
+        when(metadata.fetchMovieDetailsFresh(1L, false)).thenThrow(new MovieNotFoundException("1"));
         MovieEntry fresh = movie(2L, "2026-10-01");
-        when(metadata.fetchMovieDetails(2L, true)).thenReturn(new MovieMetadataResult(fresh, true));
+        when(metadata.fetchMovieDetailsFresh(2L, true)).thenReturn(new MovieMetadataResult(fresh, true));
         healthy.releaseDate = "2026-10-01";
         when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
@@ -144,13 +144,13 @@ class MovieRefreshSchedulerTest {
         when(movieStorage.load("alice")).thenReturn(List.of(first));
         when(movieStorage.load("bob")).thenReturn(List.of(second));
         MovieEntry fresh = movie(7L, "2026-10-01");
-        when(metadata.fetchMovieDetails(7L, true)).thenReturn(new MovieMetadataResult(fresh, true));
+        when(metadata.fetchMovieDetailsFresh(7L, true)).thenReturn(new MovieMetadataResult(fresh, true));
         when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
 
-        verify(metadata).fetchMovieDetails(7L, true);
+        verify(metadata).fetchMovieDetailsFresh(7L, true);
         verify(movieStorage).update(eq("alice"), eq("first"), any(), eq(false));
         verify(movieStorage).update(eq("bob"), eq("second"), any(), eq(false));
         verify(sse).broadcastMoviesChanged();
@@ -168,16 +168,16 @@ class MovieRefreshSchedulerTest {
         when(movieStorage.load("alice")).thenReturn(List.of(first, second));
         MovieEntry freshFirst = movie(11L, "2026-10-01");
         MovieEntry freshSecond = movie(12L, "2026-10-01");
-        when(metadata.fetchMovieDetails(11L, true)).thenReturn(new MovieMetadataResult(freshFirst, true));
-        when(metadata.fetchMovieDetails(12L, false)).thenReturn(new MovieMetadataResult(freshSecond, false));
+        when(metadata.fetchMovieDetailsFresh(11L, true)).thenReturn(new MovieMetadataResult(freshFirst, true));
+        when(metadata.fetchMovieDetailsFresh(12L, false)).thenReturn(new MovieMetadataResult(freshSecond, false));
         when(metadata.isMovieOmdbEnrichmentApplicable(freshFirst)).thenReturn(true);
         when(metadata.isMovieOmdbEnrichmentApplicable(freshSecond)).thenReturn(true);
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
 
-        verify(metadata).fetchMovieDetails(11L, true);
-        verify(metadata).fetchMovieDetails(12L, false);
+        verify(metadata).fetchMovieDetailsFresh(11L, true);
+        verify(metadata).fetchMovieDetailsFresh(12L, false);
         verify(sse).broadcastMoviesChanged();
     }
 
@@ -193,14 +193,14 @@ class MovieRefreshSchedulerTest {
         when(movieStorage.load("alice")).thenReturn(List.of(first, second));
         MovieEntry freshFirst = movie(21L, "2026-10-01");
         MovieEntry freshSecond = movie(22L, "2026-10-01");
-        when(metadata.fetchMovieDetails(21L, true)).thenReturn(new MovieMetadataResult(freshFirst, false, false));
-        when(metadata.fetchMovieDetails(22L, true)).thenReturn(new MovieMetadataResult(freshSecond, true, true));
+        when(metadata.fetchMovieDetailsFresh(21L, true)).thenReturn(new MovieMetadataResult(freshFirst, false, false));
+        when(metadata.fetchMovieDetailsFresh(22L, true)).thenReturn(new MovieMetadataResult(freshSecond, true, true));
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
 
-        verify(metadata).fetchMovieDetails(21L, true);
-        verify(metadata).fetchMovieDetails(22L, true);
+        verify(metadata).fetchMovieDetailsFresh(21L, true);
+        verify(metadata).fetchMovieDetailsFresh(22L, true);
     }
 
     @Test
@@ -211,17 +211,17 @@ class MovieRefreshSchedulerTest {
         future.id = "future";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(undated, future));
-        when(metadata.fetchMovieDetails(31L, false))
+        when(metadata.fetchMovieDetailsFresh(31L, false))
                 .thenReturn(new MovieMetadataResult(movie(31L, null), false));
-        when(metadata.fetchMovieDetails(32L, false))
+        when(metadata.fetchMovieDetailsFresh(32L, false))
                 .thenReturn(new MovieMetadataResult(movie(32L, future.releaseDate), false));
         stubUpdateMutatesEntry();
 
         scheduler.doRefresh();
 
-        verify(metadata).fetchMovieDetails(31L, false);
-        verify(metadata).fetchMovieDetails(32L, false);
-        verify(metadata, never()).fetchMovieDetails(any(Long.class), eq(true));
+        verify(metadata).fetchMovieDetailsFresh(31L, false);
+        verify(metadata).fetchMovieDetailsFresh(32L, false);
+        verify(metadata, never()).fetchMovieDetailsFresh(any(Long.class), eq(true));
     }
 
     @Test
@@ -236,7 +236,7 @@ class MovieRefreshSchedulerTest {
         when(showStorage.listUserIds()).thenReturn(List.of());
         MovieEntry fresh = movie(41L, null);
         fresh.title = "Refreshed Movie";
-        when(metadata.fetchMovieDetails(41L, false)).thenReturn(new MovieMetadataResult(fresh, false));
+        when(metadata.fetchMovieDetailsFresh(41L, false)).thenReturn(new MovieMetadataResult(fresh, false));
         scheduler = new MovieRefreshScheduler(
                 showStorage, movieOnlyStorage, metadata, sse, CLOCK,
                 Duration.ofHours(24), Duration.ofDays(7), Duration.ofDays(30),
@@ -244,7 +244,7 @@ class MovieRefreshSchedulerTest {
 
         scheduler.doRefresh();
 
-        verify(metadata).fetchMovieDetails(41L, false);
+        verify(metadata).fetchMovieDetailsFresh(41L, false);
         assertThat(movieOnlyStorage.load("movie-only-user").getFirst().title)
                 .isEqualTo("Refreshed Movie");
     }

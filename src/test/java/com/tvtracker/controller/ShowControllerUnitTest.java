@@ -298,7 +298,7 @@ class ShowControllerTest {
     fresh.seasons.add(season(1, freshEp));
 
     when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(existing));
-    when(metadata.fetchDetails(42L, null)).thenReturn(fresh);
+    when(metadata.fetchDetailsFresh(42L, null)).thenReturn(fresh);
     when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
 
     TrackedShow result = controller.refreshShow("1");
@@ -308,6 +308,43 @@ class ShowControllerTest {
     assertThat(result.personalRating).isEqualTo(9.0);
     assertThat(result.cast).hasSize(1);
     assertThat(freshEp.watched).isTrue(); // carried over from the existing episode
+    assertThat(result.metadataLastRefreshedAt).isNotNull();
+  }
+
+  @Test
+  void refreshShow_keepsGoodMetadataWhenProviderReturnsEmptyFields() throws Exception {
+    TrackedShow existing = show("1", WatchStatus.NOT_WATCHED);
+    existing.tmdbId = 42L;
+    existing.overview = "Existing overview";
+    existing.posterPath = "/existing.jpg";
+    existing.seasons.add(season(1, episode(1, true)));
+
+    TrackedShow fresh = show(null, null);
+    fresh.overview = "";
+    fresh.posterPath = null;
+
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(existing));
+    when(metadata.fetchDetailsFresh(42L, null)).thenReturn(fresh);
+    when(storage.save(eq(USER_ID), any(), anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
+
+    TrackedShow result = controller.refreshShow("1", true);
+
+    assertThat(result.overview).isEqualTo("Existing overview");
+    assertThat(result.posterPath).isEqualTo("/existing.jpg");
+    assertThat(result.seasons).hasSize(1);
+    assertThat(result.seasons.getFirst().episodes.getFirst().watched).isTrue();
+  }
+
+  @Test
+  void refreshShow_skipsFreshShowUnlessForced() throws Exception {
+    TrackedShow existing = show("1", WatchStatus.NOT_WATCHED);
+    existing.metadataLastRefreshedAt = java.time.Instant.now();
+    when(storage.findById(USER_ID, "1")).thenReturn(Optional.of(existing));
+
+    TrackedShow result = controller.refreshShow("1", false);
+
+    assertThat(result).isSameAs(existing);
+    verify(metadata, never()).fetchDetailsFresh(any(), any());
   }
 
   @Test

@@ -19,6 +19,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/data")
@@ -32,16 +40,31 @@ public class DataController {
     private final MovieStorageService movieStorage;
     private final ObjectMapper mapper;
     private final DailyUpdateScheduler scheduler;
+    private final Clock clock;
+    private final Duration fullRefreshCooldown;
+    private final Map<String, Instant> lastCompletedRefresh = new ConcurrentHashMap<>();
+    private final Map<String, AtomicBoolean> refreshInProgress = new ConcurrentHashMap<>();
 
     public DataController(JsonStorageService storage, ImportService importService,
                           DataImportService dataImportService, MovieStorageService movieStorage,
                           ObjectMapper mapper, DailyUpdateScheduler scheduler) {
+        this(storage, importService, dataImportService, movieStorage, mapper, scheduler,
+                Clock.systemUTC(), Duration.ofHours(6));
+    }
+
+    @Autowired
+    public DataController(JsonStorageService storage, ImportService importService,
+                          DataImportService dataImportService, MovieStorageService movieStorage,
+                          ObjectMapper mapper, DailyUpdateScheduler scheduler, Clock clock,
+                          @Value("${app.cache.full-refresh-cooldown:PT6H}") Duration fullRefreshCooldown) {
         this.storage = storage;
         this.importService = importService;
         this.dataImportService = dataImportService;
         this.movieStorage = movieStorage;
         this.mapper = mapper;
         this.scheduler = scheduler;
+        this.clock = clock;
+        this.fullRefreshCooldown = fullRefreshCooldown;
     }
 
     @GetMapping("/export")
@@ -74,9 +97,42 @@ public class DataController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<Map<String, String>> refresh() {
+    public ResponseEntity<RefreshResponse> refresh() {
         String userId = CurrentUserContext.currentUserId();
-        scheduler.doCheck(userId);
-        return ResponseEntity.ok(Map.of("message", "Refresh complete."));
+        AtomicBoolean active = refreshInProgress.computeIfAbsent(userId, ignored -> new AtomicBoolean());
+        if (!active.compareAndSet(false, true)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new RefreshResponse("A refresh is already running.", null));
+        }
+        try {
+            Instant now = clock.instant();
+            Instant lastRefresh = lastCompletedRefresh.get(userId);
+            if (lastRefresh != null) {
+                Instant nextRefreshAt = lastRefresh.plus(fullRefreshCooldown);
+                if (now.isBefore(nextRefreshAt)) {
+                    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                            .body(new RefreshResponse("Refresh cooldown is active.", nextRefreshAt));
+                }
+            }
+            DailyUpdateScheduler.RefreshResult result = scheduler.doCheckWithResult(userId);
+            if (!result.completed()) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(new RefreshResponse("Refresh failed; existing data was kept.", null));
+            }
+            Instant nextRefreshAt = clock.instant().plus(fullRefreshCooldown);
+            lastCompletedRefresh.put(userId, clock.instant());
+            String message = result.partialFailure()
+                    ? "Refresh complete with partial failures."
+                    : "Refresh complete.";
+            return ResponseEntity.ok(new RefreshResponse(message, nextRefreshAt));
+        } catch (RuntimeException e) {
+            log.error("Manual refresh failed for user {}", userId, e);
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(new RefreshResponse("Refresh failed; existing data was kept.", null));
+        } finally {
+            active.set(false);
+        }
     }
+
+    public record RefreshResponse(String message, Instant nextRefreshAt) {}
 }
