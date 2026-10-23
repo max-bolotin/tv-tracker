@@ -139,4 +139,25 @@ describe('SearchBar', () => {
 
     expect(document.activeElement).toBe(input);
   });
+
+  it.each([
+    ['shows', 'Search for a TV show...', 'searchShows'],
+    ['movies', 'Search for movies...', 'searchMovies'],
+  ] as const)('shows an empty state when %s search finds no matches', async (mode, placeholder, method) => {
+    vi.mocked(api[method]).mockResolvedValue([]);
+    render(
+      <SearchBar
+        mode={mode}
+        onAdd={vi.fn()}
+        onPreview={vi.fn()}
+        onAddMovie={vi.fn()}
+        onPreviewMovie={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value: 'No such title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Nothing found');
+  });
 });

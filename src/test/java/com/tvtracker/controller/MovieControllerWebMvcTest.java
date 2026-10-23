@@ -72,17 +72,19 @@ class MovieControllerWebMvcTest {
     }
 
     @Test
-    void unauthenticatedMovieDetailsReturnsDescriptionWithoutRatingsEnrichment() throws Exception {
+    void unauthenticatedMovieDetailsReturnsDescriptionAndRatings() throws Exception {
         MovieEntry movie = movie("Arrival", 42L);
         movie.overview = "A first-contact story";
-        when(metadata.fetchMovieDetails(42L, false)).thenReturn(new MovieMetadataResult(movie, false));
+        movie.imdbRating = "7.9";
+        movie.rottenTomatoesScore = "94%";
+        when(metadata.fetchMovieDetails(42L)).thenReturn(new MovieMetadataResult(movie, true));
 
         mockMvc.perform(get("/api/movies/details").param("tmdbId", "42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Arrival"))
                 .andExpect(jsonPath("$.overview").value("A first-contact story"))
-                .andExpect(jsonPath("$.imdbRating").doesNotExist())
-                .andExpect(jsonPath("$.rottenTomatoesScore").doesNotExist());
+                .andExpect(jsonPath("$.imdbRating").value("7.9"))
+                .andExpect(jsonPath("$.rottenTomatoesScore").value("94%"));
     }
 
     @Test

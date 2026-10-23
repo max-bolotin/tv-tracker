@@ -57,6 +57,24 @@ describe('MovieDetail personal rating', () => {
     expect(api.updateMovieRating).toHaveBeenCalledWith('movie/1', 0);
   });
 
+  it('links Rotten Tomatoes score to a title search', () => {
+    render(
+      <MovieDetail
+        movie={{ ...movie, rottenTomatoesScore: '94%' }}
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: '🍅 94%' });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://www.rottentomatoes.com/search?search=Arrival',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
   it('does not create a default rating and saves null when cleared', async () => {
     vi.mocked(api.updateMovieRating).mockResolvedValue(movie);
     render(

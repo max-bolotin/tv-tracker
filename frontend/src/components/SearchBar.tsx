@@ -26,12 +26,14 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
   const [movieResults, setMovieResults] = useState<MovieSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resultsOpen, setResultsOpenState] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsOpenRef = useRef(false);
 
   const setResultsOpen = useCallback((isOpen: boolean) => {
     resultsOpenRef.current = isOpen;
+    setResultsOpenState(isOpen);
     onResultsOpenChange?.(isOpen);
   }, [onResultsOpenChange]);
 
@@ -40,7 +42,8 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
     setResults([]);
     setMovieResults([]);
     setError(null);
-  }, [mode]);
+    setResultsOpen(false);
+  }, [mode, setResultsOpen]);
 
   const search = useCallback(async (q = query) => {
     if (!q.trim()) return;
@@ -55,14 +58,11 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
         setResults(nextResults as ShowSearchResult[]);
         setMovieResults([]);
       }
-      if (nextResults.length > 0 && !resultsOpenRef.current) {
+      if (!resultsOpenRef.current) {
         const currentState = history.state;
         const state = currentState && typeof currentState === 'object' ? currentState : {};
         history.pushState({ ...state, searchModal: true }, '');
         setResultsOpen(true);
-      } else if (nextResults.length === 0 && resultsOpenRef.current) {
-        if (history.state?.searchModal) history.back();
-        else setResultsOpen(false);
       }
     } catch (cause) {
       console.error(`Failed to search ${mode}`, cause);
@@ -150,63 +150,71 @@ export const SearchBar = forwardRef<SearchBarHandle, Props>(function SearchBar(
           {loading ? '...' : 'Search'}
         </button>
       </div>
-      {results.length > 0 && (
+      {resultsOpen && mode === 'shows' && (
         <>
           <div className="search-backdrop" onClick={dismiss} />
-          <ul className="search-results">
-            {results.map(r => (
-              <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { closeResults(); onPreview(r); }}>
-                {r.posterPath && <img src={r.posterPath} alt={r.title} />}
-                <div>
-                  <strong>{r.title}</strong>
-                  <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
-                </div>
-                <button onClick={e => { e.stopPropagation(); onAdd(r); dismiss(); setQuery(''); }}>
-                  + Track
-                </button>
-              </li>
-            ))}
-          </ul>
+          {results.length > 0 ? (
+            <ul className="search-results">
+              {results.map(r => (
+                <li key={r.tmdbId ?? r.tvmazeId} onClick={() => { closeResults(); onPreview(r); }}>
+                  {r.posterPath && <img src={r.posterPath} alt={r.title} />}
+                  <div>
+                    <strong>{r.title}</strong>
+                    <p>{r.overview?.slice(0, 100)}{r.overview && r.overview.length > 100 ? '…' : ''}</p>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); onAdd(r); dismiss(); setQuery(''); }}>
+                    + Track
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="search-results search-empty" role="status">Nothing found</div>
+          )}
         </>
       )}
-      {movieResults.length > 0 && (
+      {resultsOpen && mode === 'movies' && (
         <>
           <div className="search-backdrop" onClick={dismiss} />
-          <ul className="search-results">
-            {movieResults.map(movie => {
-              const tracked = trackedMovies.find(entry => entry.tmdbId === movie.tmdbId);
-              return (
-                <li key={movie.tmdbId}>
-                  <button
-                    className="search-result-preview"
-                    type="button"
-                    onClick={() => {
-                      closeResults();
-                      onPreviewMovie?.(movie);
-                    }}
-                  >
-                    {movie.poster && <img src={movie.poster} alt="" />}
-                    <span>
-                      <strong>{movie.title}</strong>
-                      {movie.releaseDate && <span className="search-result-year">{movie.releaseDate.slice(0, 4)}</span>}
-                      {movie.overview && <span className="search-result-overview">
-                        {movie.overview.slice(0, 100)}{movie.overview.length > 100 ? '…' : ''}
-                      </span>}
-                    </span>
-                  </button>
-                  {tracked ? (
-                    <span className="search-tracked-label">Tracked</span>
-                  ) : (
-                    <button onClick={() => {
-                      onAddMovie?.(movie);
-                      dismiss();
-                      setQuery('');
-                    }}>+ Track</button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          {movieResults.length > 0 ? (
+            <ul className="search-results">
+              {movieResults.map(movie => {
+                const tracked = trackedMovies.find(entry => entry.tmdbId === movie.tmdbId);
+                return (
+                  <li key={movie.tmdbId}>
+                    <button
+                      className="search-result-preview"
+                      type="button"
+                      onClick={() => {
+                        closeResults();
+                        onPreviewMovie?.(movie);
+                      }}
+                    >
+                      {movie.poster && <img src={movie.poster} alt="" />}
+                      <span>
+                        <strong>{movie.title}</strong>
+                        {movie.releaseDate && <span className="search-result-year">{movie.releaseDate.slice(0, 4)}</span>}
+                        {movie.overview && <span className="search-result-overview">
+                          {movie.overview.slice(0, 100)}{movie.overview.length > 100 ? '…' : ''}
+                        </span>}
+                      </span>
+                    </button>
+                    {tracked ? (
+                      <span className="search-tracked-label">Tracked</span>
+                    ) : (
+                      <button onClick={() => {
+                        onAddMovie?.(movie);
+                        dismiss();
+                        setQuery('');
+                      }}>+ Track</button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="search-results search-empty" role="status">Nothing found</div>
+          )}
         </>
       )}
       {error && <p className="search-error" role="alert">{error}</p>}

@@ -58,7 +58,7 @@ public class MovieController {
         if (tmdbId <= 0) {
             throw new InvalidMovieRequestException("A positive tmdbId is required");
         }
-        return metadata.fetchMovieDetails(tmdbId, false).movie();
+        return metadata.fetchMovieDetails(tmdbId).movie();
     }
 
     @PostMapping

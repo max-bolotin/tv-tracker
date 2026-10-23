@@ -131,6 +131,9 @@ describe('Dashboard movie tab', () => {
       tmdbId: 7,
       title: 'Arrival',
       overview: 'The full movie synopsis.',
+      imdbId: 'tt2543164',
+      imdbRating: '7.9',
+      rottenTomatoesScore: '94%',
       status: 'PLANNED',
       cast: [{
         name: 'Amy Adams',
@@ -162,6 +165,8 @@ describe('Dashboard movie tab', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Arrival/ }));
 
     expect(await screen.findByText('The full movie synopsis.')).toBeInTheDocument();
+    expect(screen.getByText('IMDb 7.9/10')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '🍅 94%' })).toBeInTheDocument();
     const actorLink = screen.getByRole('link', { name: 'Open Amy Adams profile' });
     expect(actorLink).toHaveAttribute('href', 'https://www.themoviedb.org/person/9273');
     expect(actorLink.querySelector('img')).toHaveAttribute('src', 'https://images.example/amy.jpg');

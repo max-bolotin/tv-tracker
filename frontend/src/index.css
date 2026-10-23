@@ -366,6 +366,12 @@ body {
   max-height: 360px;
   overflow-y: auto;
 }
+.search-empty {
+  margin: 0;
+  padding: 1rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
 .search-results li {
   display: flex;
   align-items: center;

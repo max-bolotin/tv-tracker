@@ -130,7 +130,14 @@ export function MovieDetail({
                 </a>
               )}
               {movie.rottenTomatoesScore && (
-                <span className="rating-rt">🍅 {movie.rottenTomatoesScore}</span>
+                <a
+                  className="rating-rt"
+                  href={`https://www.rottentomatoes.com/search?search=${encodeURIComponent(movie.title)}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  🍅 {movie.rottenTomatoesScore}
+                </a>
               )}
               {movie.personalRating != null && (
                 <span className="rating-personal">★ {movie.personalRating.toFixed(1).replace(/\.0$/, '')}/10</span>
