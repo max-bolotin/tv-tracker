@@ -97,7 +97,7 @@ export function MovieDetail({
                 <>
                   <button className="untrack-btn" onClick={onDelete}>Untrack</button>
                   <button className="my-rating-btn" onClick={() => {
-                    setRating(movie.personalRating ?? 6);
+                    setRating(movie.personalRating ?? null);
                     setRatingOpen(true);
                   }}>
                     {movie.personalRating != null ? `My Rating: ${movie.personalRating.toFixed(1)}/10` : 'My Rating'}
@@ -177,9 +177,17 @@ export function MovieDetail({
               <div className="rating-scale-labels" aria-hidden="true">
                 <span>0</span><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span>
               </div>
-              <div className="rating-value-display">{(rating ?? 0).toFixed(1).replace(/\.0$/, '')}/10</div>
+              <div className="rating-value-display">
+                {rating == null ? 'Not rated' : `${rating.toFixed(1).replace(/\.0$/, '')}/10`}
+              </div>
             </div>
             <div className="rating-modal-actions">
+              {rating == null && (
+                <button type="button" className="secondary-action" onClick={() => setRating(0)}>
+                  Set rating to 0
+                </button>
+              )}
+              <button type="button" className="secondary-action" onClick={() => setRating(null)}>Clear rating</button>
               <button type="button" className="secondary-action" onClick={() => setRatingOpen(false)}>Close</button>
               <button type="button" className="primary-action" onClick={() => void saveRating()}>Rate!</button>
             </div>

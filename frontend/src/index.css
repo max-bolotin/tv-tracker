@@ -551,8 +551,6 @@ body {
 .movie-detail .modal-header { margin-bottom: 0; }
 .movie-detail .modal-meta { min-width: 0; }
 .movie-error { color: var(--danger-color); margin-top: 0.75rem; font-size: 0.85rem; }
-.movie-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
-.movie-actions button { font-size: 0.8rem; }
 /* Untrack button styling */
 .untrack-btn {
   padding: 0.25rem 0.6rem;

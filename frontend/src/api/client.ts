@@ -46,22 +46,22 @@ export const api = {
     }),
 
   updateMovieStatus: (id: string, status: MovieStatus) =>
-    req<MovieEntry>(`/movies/${id}/status`, {
+    req<MovieEntry>(`/movies/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     }),
 
   updateMovieRating: (id: string, personalRating: number | null) =>
-    req<MovieEntry>(`/movies/${id}/rating`, {
+    req<MovieEntry>(`/movies/${encodeURIComponent(id)}/rating`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ personalRating }),
     }),
 
-  deleteMovie: (id: string) => req<void>(`/movies/${id}`, { method: 'DELETE' }),
+  deleteMovie: (id: string) => req<void>(`/movies/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  refreshMovie: (id: string) => req<MovieEntry>(`/movies/${id}/refresh`, { method: 'POST' }),
+  refreshMovie: (id: string) => req<MovieEntry>(`/movies/${encodeURIComponent(id)}/refresh`, { method: 'POST' }),
 
   reorderMovies: (orderedIds: string[]) =>
     req<void>('/movies/reorder', {

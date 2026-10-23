@@ -86,7 +86,7 @@ public class OmdbProvider {
             }
             show.imdbRating = parseImdb(root);
             show.rtRating = parseRt(root);
-            show.ratingsUpdatedAt = LocalDate.now().toString();
+            show.ratingsUpdatedAt = LocalDate.now(clock).toString();
             log.debug("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
         } catch (OmdbBackoffException | OmdbAuthenticationException e) {
             // The provider has already logged the quota or authentication failure.
@@ -156,7 +156,7 @@ public class OmdbProvider {
             }
             season.imdbRating = parseImdb(root);
             season.rtRating = parseRt(root);
-            season.ratingsUpdatedAt = LocalDate.now().toString();
+            season.ratingsUpdatedAt = LocalDate.now(clock).toString();
             log.debug("OMDb enriched show '{}' season {}: imdb={} rt={}", show.title, season.number,
                     season.imdbRating, season.rtRating);
         } catch (OmdbBackoffException | OmdbAuthenticationException e) {
@@ -208,21 +208,40 @@ public class OmdbProvider {
             requestAttempted.set(true);
         }
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        JsonNode body = mapper.readTree(resp.body());
+        String responseText = resp.body();
+        JsonNode body;
+        try {
+            body = mapper.readTree(responseText);
+        } catch (Exception parseFailure) {
+            if (responseText.contains("Request limit reached!")) {
+                startBackoff();
+                throw new OmdbBackoffException(true);
+            }
+            if (resp.statusCode() == 401) {
+                throw rejectApiKey(responseText);
+            }
+            if (resp.statusCode() != 200) {
+                throw new RuntimeException("HTTP " + resp.statusCode() + " - " + responseText, parseFailure);
+            }
+            throw parseFailure;
+        }
         String error = body.path("Error").asText("");
-        if (error.contains("Request limit reached!")) {
+        if (error.contains("Request limit reached!") || responseText.contains("Request limit reached!")) {
             startBackoff();
             throw new OmdbBackoffException(true);
         }
         if (resp.statusCode() != 200) {
             if (resp.statusCode() == 401) {
-                log.error("OMDb rejected the API key (HTTP 401): {}",
-                        error.isBlank() ? resp.body() : error);
-                throw new OmdbAuthenticationException("OMDb authentication failed");
+                throw rejectApiKey(error.isBlank() ? responseText : error);
             }
             throw new RuntimeException("HTTP " + resp.statusCode() + " - " + resp.body());
         }
         return body;
+    }
+
+    private OmdbAuthenticationException rejectApiKey(String detail) {
+        log.error("OMDb rejected the API key (HTTP 401): {}", detail);
+        return new OmdbAuthenticationException("OMDb authentication failed");
     }
 
     public boolean isBackoffActive() {

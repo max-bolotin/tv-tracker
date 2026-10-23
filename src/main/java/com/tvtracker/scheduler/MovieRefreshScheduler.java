@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,12 +74,18 @@ public class MovieRefreshScheduler {
     public void doRefresh() {
         Instant now = clock.instant();
         Map<Long, List<MovieReference>> referencesByTmdbId = new LinkedHashMap<>();
-        for (String userId : showStorage.listUserIds()) {
+        LinkedHashSet<String> userIds = new LinkedHashSet<>(showStorage.listUserIds());
+        try {
+            userIds.addAll(movieStorage.listUserIds());
+        } catch (Exception e) {
+            log.warn("Movie refresh could not list movie storage users: {}", e.getMessage(), e);
+        }
+        for (String userId : userIds) {
             try {
                 for (MovieEntry movie : movieStorage.load(userId)) {
                     if (movie.tmdbId != null && shouldRefresh(movie, now)) {
                         referencesByTmdbId.computeIfAbsent(movie.tmdbId, ignored -> new ArrayList<>())
-                                .add(new MovieReference(userId, movie.id));
+                                .add(new MovieReference(userId, movie.id, movie.releaseDate));
                     }
                 }
             } catch (Exception e) {
@@ -93,7 +100,10 @@ public class MovieRefreshScheduler {
             long tmdbId = entry.getKey();
             MetadataService.MovieMetadataResult result;
             try {
-                boolean enrichWithOmdb = omdbCalls < omdbMaxCallsPerRun;
+                LocalDate today = LocalDate.now(clock);
+                boolean released = entry.getValue().stream()
+                        .anyMatch(reference -> isReleased(reference.releaseDate(), today));
+                boolean enrichWithOmdb = released && omdbCalls < omdbMaxCallsPerRun;
                 result = metadata.fetchMovieDetails(tmdbId, enrichWithOmdb);
                 if (result.omdbRequestAttempted()) {
                     omdbCalls++;
@@ -154,5 +164,10 @@ public class MovieRefreshScheduler {
         }
     }
 
-    private record MovieReference(String userId, String movieId) {}
+    private static boolean isReleased(String releaseDate, LocalDate today) {
+        LocalDate date = parseReleaseDate(releaseDate);
+        return date != null && !date.isAfter(today);
+    }
+
+    private record MovieReference(String userId, String movieId, String releaseDate) {}
 }

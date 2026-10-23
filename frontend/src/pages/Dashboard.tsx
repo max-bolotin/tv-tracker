@@ -238,9 +238,10 @@ export function Dashboard() {
     es.addEventListener('movies-changed', () => {
       api.getMovies().then(updatedMovies => {
         setMovies(updatedMovies);
-        setSelectedMovie(previous => previous
-          ? updatedMovies.find(movie => movie.id === previous.id) ?? null
-          : null);
+        setSelectedMovie(previous => {
+          if (!previous?.id) return previous;
+          return updatedMovies.find(movie => movie.id === previous.id) ?? null;
+        });
       }).catch(error => {
         console.error('Failed to refresh movies after update event', error);
       });

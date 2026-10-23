@@ -69,6 +69,36 @@ describe('Dashboard movie tab', () => {
     expect(screen.getByText(/personal movie library/)).toBeInTheDocument();
   });
 
+  it('keeps an untracked movie preview open when a movies-changed event arrives', async () => {
+    vi.mocked(api.searchMovies).mockResolvedValue([{
+      tmdbId: 7,
+      title: 'Arrival',
+      overview: 'A first-contact story',
+    }]);
+    vi.mocked(api.getMovieDetails).mockResolvedValue({
+      tmdbId: 7,
+      title: 'Arrival',
+      overview: 'A first-contact story',
+      status: 'PLANNED',
+    });
+
+    render(<Dashboard />);
+    await waitFor(() => expect(api.getShows).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'My Movies' }));
+    fireEvent.change(await screen.findByPlaceholderText('Search for movies...'), {
+      target: { value: 'Arrival' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Arrival/ }));
+
+    expect(await screen.findByText('A first-contact story')).toBeInTheDocument();
+    sseListeners.get('movies-changed')?.();
+
+    await waitFor(() => expect(api.getMovies).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('heading', { name: 'Arrival' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Track this movie' })).toBeInTheDocument();
+  });
+
   it('continues pending show handling when movie loading fails', async () => {
     localStorage.setItem('postLoginAdd', JSON.stringify({ tmdbId: 42 }));
     vi.mocked(api.getMovies).mockRejectedValue(new Error('Movies unavailable'));

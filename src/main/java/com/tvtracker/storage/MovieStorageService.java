@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 @Service
 public class MovieStorageService {
@@ -59,6 +60,20 @@ public class MovieStorageService {
                 .filter(movie -> movie.tmdbId != null)
                 .forEach(movie -> movie.id = legacyMovieId(movie.tmdbId));
         return movies;
+    }
+
+    public synchronized List<String> listUserIds() throws IOException {
+        if (!Files.isDirectory(moviesRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> files = Files.list(moviesRoot)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> name.endsWith(".json"))
+                    .map(name -> name.substring(0, name.length() - ".json".length()))
+                    .toList();
+        }
     }
 
     public synchronized ImportFileSnapshot snapshotForImport(String userId) throws IOException {
@@ -230,20 +245,8 @@ public class MovieStorageService {
     }
 
     private void writeMoviesToFile(Path file, List<MovieEntry> movies) throws IOException {
-        Path parent = file.getParent();
-        Files.createDirectories(parent);
-        Path tempFile = parent.resolve(file.getFileName() + "." + UUID.randomUUID() + ".tmp");
-        Files.createFile(tempFile);
-        try {
-            mapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), movies);
-            try {
-                Files.move(tempFile, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(tempFile);
-        }
+        writeBytesAtomically(
+                file, mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(movies));
     }
 
     private void backupBeforeImport(Path file) throws IOException {

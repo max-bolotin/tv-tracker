@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import type { ShowSearchResult } from '../types';
-import type { MovieEntry, MovieSearchResult } from '../types';
+import type { MovieEntry, MovieSearchResult, ShowSearchResult } from '../types';
 import { api } from '../api/client';
 
 interface Props {

@@ -121,6 +121,24 @@ class DataImportServiceTest {
   }
 
   @Test
+  void importRegeneratesMovieIdsThatAreUnsafeForUrlPaths() throws Exception {
+    importJson("""
+        {"version":2,"movies":[
+          {"id":"a/b","tmdbId":100,"title":"Slash"},
+          {"id":"a%2Fb","tmdbId":101,"title":"Encoded slash"},
+          {"id":"a;b","tmdbId":102,"title":"Semicolon"}
+        ]}
+        """, "alice");
+
+    List<MovieEntry> imported = movieStorage.load("alice");
+    assertEquals(3, imported.size());
+    for (MovieEntry movie : imported) {
+      assertTrue(movie.id.matches("[A-Za-z0-9_-]{1,64}"));
+      assertEquals(movie.id, UUID.fromString(movie.id).toString());
+    }
+  }
+
+  @Test
   void nullMovieStatusUsesThePlannedDefault() throws Exception {
     MovieEntry movie = mapper.readValue("{\"status\":null}", MovieEntry.class);
 

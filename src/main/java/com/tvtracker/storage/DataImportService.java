@@ -283,7 +283,8 @@ public class DataImportService {
             if (idNode != null && !idNode.isNull() && !idNode.isTextual()) {
                 throw new InvalidImportException(fieldPrefix + ".id must be a string or null");
             }
-            if (idNode == null || idNode.isNull() || movie.id == null || movie.id.isBlank()) {
+            if (idNode == null || idNode.isNull() || movie.id == null
+                    || !movie.id.matches("[A-Za-z0-9_-]{1,64}")) {
                 movie.id = UUID.randomUUID().toString();
             }
             if (!movieIds.add(movie.id)) {

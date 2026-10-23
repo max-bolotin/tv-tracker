@@ -304,6 +304,19 @@ class MovieStorageServiceTest {
     }
 
     @Test
+    void listUserIdsIncludesOnlyMovieJsonFiles() throws Exception {
+        Path moviesRoot = tempDir.resolve("movies-data");
+        Files.createDirectories(moviesRoot);
+        Files.writeString(moviesRoot.resolve("movie-only.json"), "[]");
+        Files.writeString(moviesRoot.resolve("alice.json.bak"), "[]");
+        Files.writeString(moviesRoot.resolve("alice.json.123e4567-e89b-12d3-a456-426614174000.tmp"), "[]");
+        Files.createDirectories(moviesRoot.resolve("not-a-user.json"));
+        MovieStorageService storage = createService(tempDir.resolve("users"), moviesRoot.toString());
+
+        assertEquals(List.of("movie-only"), storage.listUserIds());
+    }
+
+    @Test
     void writesLeaveNoTemporaryFilesBehind() throws Exception {
         MovieStorageService storage = createService(tempDir.resolve("users"));
         MovieEntry movie = movie("Temp file check");

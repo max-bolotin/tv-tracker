@@ -5,6 +5,7 @@ import com.tvtracker.exception.MovieNotFoundException;
 import com.tvtracker.model.MovieEntry;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.provider.MetadataService.MovieMetadataResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tvtracker.storage.JsonStorageService;
 import com.tvtracker.storage.MovieStorageService;
 import java.time.Clock;
@@ -12,10 +13,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +33,8 @@ import static org.mockito.Mockito.when;
 class MovieRefreshSchedulerTest {
     private static final Instant NOW = Instant.parse("2026-10-22T10:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneId.of("Europe/Berlin"));
+    @TempDir
+    Path tempDir;
 
     private JsonStorageService showStorage;
     private MovieStorageService movieStorage;
@@ -78,6 +83,7 @@ class MovieRefreshSchedulerTest {
     void keepsExistingRatingsWhenFetchedRatingsAreNull() throws Exception {
         MovieEntry existing = movie(1L, null);
         existing.id = "one";
+        existing.releaseDate = "2026-10-01";
         existing.imdbRating = "8.1";
         existing.rottenTomatoesScore = "91%";
         existing.imdbId = "tt1234567";
@@ -111,9 +117,10 @@ class MovieRefreshSchedulerTest {
         healthy.id = "healthy";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(missing, healthy));
-        when(metadata.fetchMovieDetails(1L, true)).thenThrow(new MovieNotFoundException("1"));
+        when(metadata.fetchMovieDetails(1L, false)).thenThrow(new MovieNotFoundException("1"));
         MovieEntry fresh = movie(2L, "2026-10-01");
         when(metadata.fetchMovieDetails(2L, true)).thenReturn(new MovieMetadataResult(fresh, true));
+        healthy.releaseDate = "2026-10-01";
         when(metadata.isMovieOmdbEnrichmentApplicable(fresh)).thenReturn(true);
         stubUpdateMutatesEntry();
 
@@ -129,8 +136,10 @@ class MovieRefreshSchedulerTest {
     void cachesTmdbFetchAcrossUsersAndBroadcastsOncePerChangedUser() throws Exception {
         MovieEntry first = movie(7L, null);
         first.id = "first";
+        first.releaseDate = "2026-10-01";
         MovieEntry second = movie(7L, null);
         second.id = "second";
+        second.releaseDate = "2026-10-01";
         when(showStorage.listUserIds()).thenReturn(List.of("alice", "bob"));
         when(movieStorage.load("alice")).thenReturn(List.of(first));
         when(movieStorage.load("bob")).thenReturn(List.of(second));
@@ -151,8 +160,10 @@ class MovieRefreshSchedulerTest {
     void limitsOmdbEnrichmentRequestsPerRun() throws Exception {
         MovieEntry first = movie(11L, null);
         first.id = "first";
+        first.releaseDate = "2026-10-01";
         MovieEntry second = movie(12L, null);
         second.id = "second";
+        second.releaseDate = "2026-10-01";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(first, second));
         MovieEntry freshFirst = movie(11L, "2026-10-01");
@@ -174,8 +185,10 @@ class MovieRefreshSchedulerTest {
     void failedOmdbAttemptThatWasSuppressedDoesNotConsumeTheRunLimit() throws Exception {
         MovieEntry first = movie(21L, null);
         first.id = "first";
+        first.releaseDate = "2026-10-01";
         MovieEntry second = movie(22L, null);
         second.id = "second";
+        second.releaseDate = "2026-10-01";
         when(showStorage.listUserIds()).thenReturn(List.of("alice"));
         when(movieStorage.load("alice")).thenReturn(List.of(first, second));
         MovieEntry freshFirst = movie(21L, "2026-10-01");
@@ -188,6 +201,52 @@ class MovieRefreshSchedulerTest {
 
         verify(metadata).fetchMovieDetails(21L, true);
         verify(metadata).fetchMovieDetails(22L, true);
+    }
+
+    @Test
+    void skipsOmdbEnrichmentForFutureAndMissingReleaseDates() throws Exception {
+        MovieEntry undated = movie(31L, null);
+        undated.id = "undated";
+        MovieEntry future = movie(32L, LocalDate.now(CLOCK).plusDays(1).toString());
+        future.id = "future";
+        when(showStorage.listUserIds()).thenReturn(List.of("alice"));
+        when(movieStorage.load("alice")).thenReturn(List.of(undated, future));
+        when(metadata.fetchMovieDetails(31L, false))
+                .thenReturn(new MovieMetadataResult(movie(31L, null), false));
+        when(metadata.fetchMovieDetails(32L, false))
+                .thenReturn(new MovieMetadataResult(movie(32L, future.releaseDate), false));
+        stubUpdateMutatesEntry();
+
+        scheduler.doRefresh();
+
+        verify(metadata).fetchMovieDetails(31L, false);
+        verify(metadata).fetchMovieDetails(32L, false);
+        verify(metadata, never()).fetchMovieDetails(any(Long.class), eq(true));
+    }
+
+    @Test
+    void refreshesMovieForUserWithNoShowStorageFile() throws Exception {
+        Path moviesRoot = tempDir.resolve("movies");
+        MovieStorageService movieOnlyStorage = new MovieStorageService(
+                tempDir.resolve("users").toString(), moviesRoot.toString(),
+                new ObjectMapper(), sse);
+        MovieEntry tracked = movie(41L, null);
+        movieOnlyStorage.save("movie-only-user", tracked);
+
+        when(showStorage.listUserIds()).thenReturn(List.of());
+        MovieEntry fresh = movie(41L, null);
+        fresh.title = "Refreshed Movie";
+        when(metadata.fetchMovieDetails(41L, false)).thenReturn(new MovieMetadataResult(fresh, false));
+        scheduler = new MovieRefreshScheduler(
+                showStorage, movieOnlyStorage, metadata, sse, CLOCK,
+                Duration.ofHours(24), Duration.ofDays(7), Duration.ofDays(30),
+                Duration.ofDays(90), 1);
+
+        scheduler.doRefresh();
+
+        verify(metadata).fetchMovieDetails(41L, false);
+        assertThat(movieOnlyStorage.load("movie-only-user").getFirst().title)
+                .isEqualTo("Refreshed Movie");
     }
 
     private void stubUpdateMutatesEntry() throws Exception {

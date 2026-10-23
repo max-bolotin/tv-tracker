@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.tvtracker.exception.UpstreamServiceException;
 import com.tvtracker.model.MovieEntry;
+import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
+import com.tvtracker.provider.OmdbProvider.MovieEnrichmentException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -116,6 +119,38 @@ class OmdbProviderMovieTest {
     }
 
     @Test
+    void nonJsonOmdbFailureRetainsTheHttpStatus() {
+        responseBody = "<html>upstream proxy unavailable</html>";
+        responseStatus = 503;
+
+        UpstreamServiceException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                UpstreamServiceException.class, () -> provider().enrichMovie(movie()));
+
+        assertTrue(failure.getCause().getMessage().contains("HTTP 503"));
+    }
+
+    @Test
+    void ratingDatesUseTheConfiguredClockZone() {
+        responseBody = """
+                {"Response":"True","imdbRating":"8.1","Ratings":[]}
+                """;
+        Clock berlinClock = Clock.fixed(
+                Instant.parse("2026-10-22T23:30:00Z"), ZoneId.of("Europe/Berlin"));
+        OmdbProvider provider = provider(berlinClock);
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        Season season = new Season(1);
+        show.seasons = new java.util.ArrayList<>(java.util.List.of(season));
+
+        provider.enrichShow(show);
+        provider.enrichSeason(show, season);
+
+        assertEquals(2, requestCount.get());
+        assertEquals("2026-10-23", show.ratingsUpdatedAt);
+        assertEquals("2026-10-23", season.ratingsUpdatedAt);
+    }
+
+    @Test
     void quotaLimitStartsBackoffAndSuppressesAllOmdbRequestsUntilItExpires() {
         responseStatus = 401;
         responseBody = """
@@ -127,7 +162,7 @@ class OmdbProviderMovieTest {
 
         UpstreamServiceException quotaFailure = org.junit.jupiter.api.Assertions.assertThrows(
                 UpstreamServiceException.class, () -> provider.enrichMovie(movie));
-        assertTrue(quotaFailure instanceof OmdbProvider.MovieEnrichmentException);
+        assertInstanceOf(MovieEnrichmentException.class, quotaFailure);
         assertTrue(((OmdbProvider.MovieEnrichmentException) quotaFailure).requestAttempted());
         assertTrue(provider.isBackoffActive());
         assertEquals(1, requestCount.get());
