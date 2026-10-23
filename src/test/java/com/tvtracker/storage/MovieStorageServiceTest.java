@@ -58,6 +58,7 @@ class MovieStorageServiceTest {
         MovieStorageService storage = new MovieStorageService(
                 tempDir.resolve("users").toString(), "", new ObjectMapper(), sse);
         MovieEntry movie = movie("Arrival");
+        movie.releaseDate = "2027-11-05";
 
         MovieEntry saved = storage.save("alice", movie);
 
@@ -66,6 +67,9 @@ class MovieStorageServiceTest {
         MovieEntry loaded = storage.load("alice").getFirst();
         assertEquals(saved.id, loaded.id);
         assertEquals(saved.title, loaded.title);
+        assertEquals("2027-11-05", loaded.releaseDate);
+        assertTrue(Files.readString(tempDir.resolve("movies").resolve("alice.json"))
+                .contains("\"releaseDate\" : \"2027-11-05\""));
         MovieEntry found = storage.findById("alice", saved.id).orElseThrow();
         assertEquals(saved.id, found.id);
         assertEquals(saved.title, found.title);

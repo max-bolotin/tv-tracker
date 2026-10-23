@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { MovieEntry, MoviePreview } from '../types';
+import { formatMovieReleaseDate } from '../utils/formatMovieReleaseDate';
 
 interface Props {
   movie: MovieEntry | MoviePreview;
@@ -25,6 +26,7 @@ export function MovieDetail({
   const [rating, setRating] = useState<number | null>(initialMovie.personalRating ?? null);
   const [error, setError] = useState<string | null>(null);
   const watched = movie.status === 'WATCHED';
+  const releaseDate = formatMovieReleaseDate(movie.releaseDate);
 
   useEffect(() => {
     setMovie(initialMovie);
@@ -109,7 +111,7 @@ export function MovieDetail({
               )}
             </div>
             <div className="movie-meta-line">
-              {movie.releaseDate && <span>{movie.releaseDate.slice(0, 4)}</span>}
+              {releaseDate && <span>Release: {releaseDate}</span>}
               {movie.runtime != null && <span>{movie.runtime} min</span>}
               {isTracked && <span className={`badge movie-status-${movie.status.toLowerCase()}`}>
                 {watched ? `Watched${movie.watchedDate ? ` · ${movie.watchedDate}` : ''}` : 'Planned to watch'}

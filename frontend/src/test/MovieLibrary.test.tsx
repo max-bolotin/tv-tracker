@@ -40,6 +40,34 @@ describe('MovieLibrary', () => {
     expect(screen.queryByText(/season|episode/i)).not.toBeInTheDocument();
   });
 
+  it('shows the full movie release date when TMDB provides it', () => {
+    render(
+      <MovieLibrary
+        movies={[{ ...plannedMovie, releaseDate: '2027-11-05' }]}
+        onSelect={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Release: Nov 5, 2027')).toBeInTheDocument();
+  });
+
+  it('shows the release month when TMDB provides only a year and month', () => {
+    render(
+      <MovieLibrary
+        movies={[{ ...plannedMovie, releaseDate: '2027-11' }]}
+        onSelect={vi.fn()}
+        onStatusChange={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Release: Nov 2027')).toBeInTheDocument();
+  });
+
   it('moves movies between sections when marked watched and unmarked', () => {
     const changes: MovieEntry[] = [];
     function StatefulLibrary() {

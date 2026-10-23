@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { MovieEntry } from '../types';
+import { formatMovieReleaseDate } from '../utils/formatMovieReleaseDate';
 
 interface Props {
   movie: MovieEntry;
@@ -12,6 +13,7 @@ interface Props {
 export function MovieCard({ movie, onSelect, onStatusChange, onDelete, onRefresh }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const watched = movie.status === 'WATCHED';
+  const releaseDate = formatMovieReleaseDate(movie.releaseDate);
 
   const refresh = async (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -30,7 +32,7 @@ export function MovieCard({ movie, onSelect, onStatusChange, onDelete, onRefresh
         : <div className="poster-placeholder">{movie.title[0]}</div>}
       <div className="card-info">
         <h3>{movie.title}</h3>
-        {movie.releaseDate && <span className="seasons-count">{movie.releaseDate.slice(0, 4)}</span>}
+        {releaseDate && <span className="seasons-count">Release: {releaseDate}</span>}
         {movie.runtime != null && <span className="seasons-count">{movie.runtime} min</span>}
         <span className={`badge movie-status-${movie.status.toLowerCase()}`}>
           {watched ? 'Watched' : 'Planned to watch'}

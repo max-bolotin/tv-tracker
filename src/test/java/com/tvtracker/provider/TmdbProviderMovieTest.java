@@ -107,6 +107,17 @@ class TmdbProviderMovieTest {
     }
 
     @Test
+    void fetchMovieDetailsPreservesFullReleaseDate() {
+        responseBody = """
+                {"id":42,"title":"Example Film","release_date":"2027-11-05","runtime":120}
+                """;
+
+        MovieEntry movie = provider().fetchMovieDetails(42);
+
+        assertEquals("2027-11-05", movie.releaseDate);
+    }
+
+    @Test
     void fetchMovieDetailsMapsTmdbNotFoundToMovieNotFound() {
         responseBody = """
                 {"status_code":34,"status_message":"The resource you requested could not be found."}
