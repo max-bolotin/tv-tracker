@@ -90,6 +90,22 @@ class OmdbProviderMovieTest {
     }
 
     @Test
+    void enrichShowRequestsRatingWhenNoRatingExistsDespiteRecentFetchDate() {
+        responseBody = """
+                {"Response":"True","imdbRating":"8.1","Ratings":[]}
+                """;
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        show.ratingsUpdatedAt = java.time.LocalDate.now().minusMonths(1).toString();
+
+        provider().enrichShow(show);
+
+        assertEquals("8.1", show.imdbRating);
+        assertEquals(java.time.LocalDate.now().toString(), show.ratingsUpdatedAt);
+        assertEquals(1, requestCount.get());
+    }
+
+    @Test
     void omdbErrorResponseLeavesExistingMovieRatingsUntouched() {
         responseBody = """
                 {"Response":"False","Error":"Movie not found!"}
