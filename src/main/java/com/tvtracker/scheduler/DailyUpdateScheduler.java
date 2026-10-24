@@ -216,9 +216,10 @@ public class DailyUpdateScheduler {
               lastFetched = rep == null ? null : rep.ratingsUpdatedAt;
             }
 
-            // If rating exists and latest episode is older than 6 months, skip
+            // Skip dormant shows only when a rating value is already stored.
             LocalDate latestAir = (rep == null) ? null : getLatestAir(rep);
-            boolean hasRating = lastFetched != null;
+            boolean hasRating = rep != null
+                && (hasRatingValue(rep.imdbRating) || hasRatingValue(rep.rtRating));
             if (hasRating && latestAir != null && latestAir.isBefore(
                 LocalDate.now().minusMonths(6))) {
               // skip re-checking ratings for dormant shows that already have a rating
@@ -424,6 +425,10 @@ public class DailyUpdateScheduler {
   }
 
   public record RefreshResult(boolean completed, boolean partialFailure) {}
+
+  private static boolean hasRatingValue(String rating) {
+    return rating != null && !rating.isBlank() && !"N/A".equalsIgnoreCase(rating);
+  }
 
   /**
    * Merges fresh metadata into existing show. Returns true if any new episodes were added.

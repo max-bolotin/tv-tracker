@@ -60,9 +60,10 @@ class OmdbProviderTest {
         // 1 month ago = within 6-month window → skip without HTTP call
         TrackedShow show = new TrackedShow();
         show.imdbId = "tt1234567";
+        show.imdbRating = "8.1";
         show.ratingsUpdatedAt = LocalDate.now().minusMonths(1).toString();
         provider("key").enrichShow(show); // would throw if HTTP were attempted
-        assertThat(show.imdbRating).isNull();
+        assertThat(show.imdbRating).isEqualTo("8.1");
     }
 
     @Test

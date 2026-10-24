@@ -77,7 +77,7 @@ public class OmdbProvider {
     public void enrichShow(TrackedShow show) {
         if (!isConfigured() || show.imdbId == null) return;
         if (isBackoffActive()) return;
-        if (isRatingFresh(show.ratingsUpdatedAt)) return;
+        if (hasShowRating(show) && isRatingFresh(show.ratingsUpdatedAt)) return;
         try {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId + "&type=series");
             if (!"True".equals(root.path("Response").asText())) {
@@ -174,6 +174,14 @@ public class OmdbProvider {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean hasShowRating(TrackedShow show) {
+        return hasRatingValue(show.imdbRating) || hasRatingValue(show.rtRating);
+    }
+
+    private boolean hasRatingValue(String rating) {
+        return rating != null && !rating.isBlank() && !"N/A".equalsIgnoreCase(rating);
     }
 
     private String parseImdb(JsonNode root) {
