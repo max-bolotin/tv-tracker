@@ -153,6 +153,19 @@ class MetadataServiceEnrichRatingsTest {
     }
 
     @Test
+    void enrichRatingsStillChecksSeasonFreshnessWhenShowRatingIsFresh() {
+        when(omdb.isConfigured()).thenReturn(true);
+        TrackedShow show = showWithSeasons("tt123", null, 1);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.SKIPPED, "rating is still fresh"));
+
+        service.enrichRatings(show);
+
+        verify(omdb).enrichSeason(show, show.seasons.getFirst());
+    }
+
+    @Test
     void fetchDetailsFreshBypassesTheShowDetailsCache() {
         when(tmdb.isConfigured()).thenReturn(true);
         when(omdb.isConfigured()).thenReturn(false);
