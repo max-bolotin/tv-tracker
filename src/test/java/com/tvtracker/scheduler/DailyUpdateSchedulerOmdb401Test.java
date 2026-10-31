@@ -35,7 +35,7 @@ public class DailyUpdateSchedulerOmdb401Test {
     }
 
     @Test
-    void omdb401_haltsFurtherCalls() throws Exception {
+    void omdbFailureDoesNotHaltFurtherCandidates() throws Exception {
         TrackedShow s1 = new TrackedShow(); s1.title = "S1";
         TrackedShow s2 = new TrackedShow(); s2.title = "S2";
 
@@ -55,7 +55,7 @@ public class DailyUpdateSchedulerOmdb401Test {
 
         scheduler.doCheck();
 
-        // ensure enrichRatings was called once and halted on 401
-        verify(metadata, times(1)).enrichRatings(any(TrackedShow.class), eq(true));
+        // A failure for one show must not prevent rating lookup for the next show.
+        verify(metadata, times(2)).enrichRatings(any(TrackedShow.class), eq(true));
     }
 }
