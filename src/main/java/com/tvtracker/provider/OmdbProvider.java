@@ -74,26 +74,45 @@ public class OmdbProvider {
      * Fetches show-level IMDb and RT ratings and writes them into the show.
      * Skips if ratings are fresh (updated within 6 months).
      */
-    public void enrichShow(TrackedShow show) {
-        if (!isConfigured() || show.imdbId == null) return;
-        if (isBackoffActive()) return;
-        if (hasShowRating(show) && isRatingFresh(show.ratingsUpdatedAt)) return;
+    public ShowEnrichmentResult enrichShow(TrackedShow show) {
+        if (!isConfigured()) return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "OMDb is not configured");
+        if (show.imdbId == null || show.imdbId.isBlank()) {
+            return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "no IMDb ID");
+        }
+        if (isBackoffActive()) return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "OMDb backoff is active");
+        if (hasRatingValue(show.imdbRating) && isRatingFresh(show.ratingsUpdatedAt)) {
+            return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "rating is still fresh");
+        }
         try {
             JsonNode root = get(baseUrl + "/?apikey=" + apiKey + "&i=" + show.imdbId + "&type=series");
             if (!"True".equals(root.path("Response").asText())) {
-                log.debug("OMDb no result for show imdbId={}", show.imdbId);
-                return;
+                return new ShowEnrichmentResult(ShowEnrichmentStatus.NO_RESULT, "OMDb returned Response=False");
             }
-            show.imdbRating = parseImdb(root);
-            show.rtRating = parseRt(root);
+            String imdbRating = parseImdb(root);
+            if (imdbRating == null) {
+                return new ShowEnrichmentResult(ShowEnrichmentStatus.NO_RATING, "OMDb returned no IMDb rating");
+            }
+            show.imdbRating = imdbRating;
+            String rtRating = parseRt(root);
+            if (rtRating != null) show.rtRating = rtRating;
             show.ratingsUpdatedAt = LocalDate.now(clock).toString();
+            show.ratingLastFetched = show.ratingsUpdatedAt;
             log.debug("OMDb enriched show '{}': imdb={} rt={}", show.title, show.imdbRating, show.rtRating);
+            return new ShowEnrichmentResult(ShowEnrichmentStatus.UPDATED, null);
         } catch (OmdbBackoffException | OmdbAuthenticationException e) {
-            // The provider has already logged the quota or authentication failure.
+            log.warn("OMDb enrichment failed for '{}': {}", show.title, e.getMessage());
+            return new ShowEnrichmentResult(ShowEnrichmentStatus.FAILED, e.getMessage());
         } catch (Exception e) {
             log.warn("OMDb enrichShow failed for '{}': {}", show.title, e.getMessage());
+            return new ShowEnrichmentResult(ShowEnrichmentStatus.FAILED, e.getMessage());
         }
     }
+
+    public enum ShowEnrichmentStatus {
+        UPDATED, NO_RATING, NO_RESULT, SKIPPED, FAILED
+    }
+
+    public record ShowEnrichmentResult(ShowEnrichmentStatus status, String detail) {}
 
     public void enrichMovie(MovieEntry movie) {
         if (!isConfigured() || movie.imdbId == null || movie.imdbId.isBlank()) {
@@ -176,10 +195,6 @@ public class OmdbProvider {
         }
     }
 
-    private boolean hasShowRating(TrackedShow show) {
-        return hasRatingValue(show.imdbRating) || hasRatingValue(show.rtRating);
-    }
-
     private boolean hasRatingValue(String rating) {
         return rating != null && !rating.isBlank() && !"N/A".equalsIgnoreCase(rating);
     }
@@ -226,7 +241,7 @@ public class OmdbProvider {
                 throw new OmdbBackoffException(true);
             }
             if (resp.statusCode() == 401) {
-                throw rejectApiKey(responseText);
+                throw rejectApiKey("HTTP 401 - " + responseText);
             }
             if (resp.statusCode() != 200) {
                 throw new RuntimeException("HTTP " + resp.statusCode() + " - " + responseText, parseFailure);
@@ -240,7 +255,7 @@ public class OmdbProvider {
         }
         if (resp.statusCode() != 200) {
             if (resp.statusCode() == 401) {
-                throw rejectApiKey(error.isBlank() ? responseText : error);
+                throw rejectApiKey("HTTP 401 - " + (error.isBlank() ? responseText : error));
             }
             throw new RuntimeException("HTTP " + resp.statusCode() + " - " + resp.body());
         }

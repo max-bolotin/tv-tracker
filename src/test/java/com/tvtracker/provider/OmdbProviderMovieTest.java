@@ -106,6 +106,84 @@ class OmdbProviderMovieTest {
     }
 
     @Test
+    void rtOnlyRatingDoesNotMakeShowRatingFresh() {
+        responseBody = """
+                {"Response":"True","imdbRating":"8.1","Ratings":[]}
+                """;
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        show.rtRating = "94%";
+        show.ratingsUpdatedAt = java.time.LocalDate.now().minusMonths(1).toString();
+
+        provider().enrichShow(show);
+
+        assertEquals("8.1", show.imdbRating);
+        assertEquals(1, requestCount.get());
+    }
+
+    @Test
+    void showResponseFalseLeavesRatingDatesUntouched() {
+        responseBody = """
+                {"Response":"False","Error":"Series not found!"}
+                """;
+        TrackedShow show = showWithRatingDates();
+
+        provider().enrichShow(show);
+
+        assertEquals("2026-10-01", show.ratingsUpdatedAt);
+        assertEquals("2026-10-02", show.ratingLastFetched);
+        assertNull(show.imdbRating);
+    }
+
+    @Test
+    void showNon200LeavesRatingDatesUntouched() {
+        responseStatus = 503;
+        responseBody = """
+                {"Response":"False","Error":"Service unavailable"}
+                """;
+        TrackedShow show = showWithRatingDates();
+
+        OmdbProvider.ShowEnrichmentResult result = provider().enrichShow(show);
+
+        assertEquals(OmdbProvider.ShowEnrichmentStatus.FAILED, result.status());
+        assertEquals("2026-10-01", show.ratingsUpdatedAt);
+        assertEquals("2026-10-02", show.ratingLastFetched);
+        assertNull(show.imdbRating);
+    }
+
+    @Test
+    void successfulShowResponseWithoutImdbRatingDoesNotStampDates() {
+        responseBody = """
+                {"Response":"True","imdbRating":"N/A","Ratings":[]}
+                """;
+        TrackedShow show = showWithRatingDates();
+
+        OmdbProvider.ShowEnrichmentResult result = provider().enrichShow(show);
+
+        assertEquals(OmdbProvider.ShowEnrichmentStatus.NO_RATING, result.status());
+        assertEquals("2026-10-01", show.ratingsUpdatedAt);
+        assertEquals("2026-10-02", show.ratingLastFetched);
+        assertNull(show.imdbRating);
+    }
+
+    @Test
+    void successfulShowResponseSetsRatingAndBothDates() {
+        responseBody = """
+                {"Response":"True","imdbRating":"8.1","Ratings":[]}
+                """;
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-10-23T12:00:00Z"), ZoneId.of("UTC"));
+        TrackedShow show = showWithRatingDates();
+
+        OmdbProvider.ShowEnrichmentResult result = provider(clock).enrichShow(show);
+
+        assertEquals(OmdbProvider.ShowEnrichmentStatus.UPDATED, result.status());
+        assertEquals("8.1", show.imdbRating);
+        assertEquals("2026-10-23", show.ratingsUpdatedAt);
+        assertEquals("2026-10-23", show.ratingLastFetched);
+    }
+
+    @Test
     void omdbErrorResponseLeavesExistingMovieRatingsUntouched() {
         responseBody = """
                 {"Response":"False","Error":"Movie not found!"}
@@ -268,6 +346,14 @@ class OmdbProviderMovieTest {
         MovieEntry movie = new MovieEntry();
         movie.imdbId = "tt0000042";
         return movie;
+    }
+
+    private static TrackedShow showWithRatingDates() {
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        show.ratingsUpdatedAt = "2026-10-01";
+        show.ratingLastFetched = "2026-10-02";
+        return show;
     }
 
     private String queryParameter(String key) {

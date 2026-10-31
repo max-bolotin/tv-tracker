@@ -54,6 +54,9 @@ class MetadataServiceEnrichRatingsTest {
     void enrichRatings_usesExistingImdbId_withoutTmdbLookup() {
         when(omdb.isConfigured()).thenReturn(true);
         TrackedShow show = showWithSeasons("tt1234567", 42L, 1, 2);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.UPDATED, null));
 
         service.enrichRatings(show);
 
@@ -71,6 +74,9 @@ class MetadataServiceEnrichRatingsTest {
         when(tmdb.isConfigured()).thenReturn(true);
         when(tmdb.fetchImdbId(99L)).thenReturn("tt9999999");
         TrackedShow show = showWithSeasons(null, 99L, 1);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.UPDATED, null));
 
         service.enrichRatings(show);
 
@@ -113,6 +119,9 @@ class MetadataServiceEnrichRatingsTest {
     void enrichRatings_callsEnrichSeasonForEachSeason() {
         when(omdb.isConfigured()).thenReturn(true);
         TrackedShow show = showWithSeasons("tt111", null, 1, 2, 3);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.UPDATED, null));
 
         service.enrichRatings(show);
 
@@ -128,6 +137,32 @@ class MetadataServiceEnrichRatingsTest {
         TrackedShow show = showWithSeasons("tt123", null, 1);
 
         service.enrichRatings(show); // must not throw
+    }
+
+    @Test
+    void enrichRatingsSkipsSeasonCallsWhenShowLookupFails() {
+        when(omdb.isConfigured()).thenReturn(true);
+        TrackedShow show = showWithSeasons("tt123", null, 1);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.FAILED, "lookup failed"));
+
+        service.enrichRatings(show);
+
+        verify(omdb, never()).enrichSeason(any(), any());
+    }
+
+    @Test
+    void enrichRatingsStillChecksSeasonFreshnessWhenShowRatingIsFresh() {
+        when(omdb.isConfigured()).thenReturn(true);
+        TrackedShow show = showWithSeasons("tt123", null, 1);
+        when(omdb.enrichShow(show)).thenReturn(
+                new OmdbProvider.ShowEnrichmentResult(
+                        OmdbProvider.ShowEnrichmentStatus.SKIPPED, "rating is still fresh"));
+
+        service.enrichRatings(show);
+
+        verify(omdb).enrichSeason(show, show.seasons.getFirst());
     }
 
     @Test

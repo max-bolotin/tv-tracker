@@ -4,6 +4,7 @@ import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
 import com.tvtracker.provider.MetadataService;
+import com.tvtracker.provider.OmdbProvider;
 import com.tvtracker.storage.JsonStorageService;
 import jakarta.annotation.Nullable;
 import java.time.LocalDate;
@@ -68,6 +69,7 @@ public class DailyUpdateScheduler {
       log.info("Scheduled daily update: running checks for {} user(s)", users.size());
       // Build map of canonical show key -> list of references (userId + TrackedShow)
       Map<String, List<Entry<String, TrackedShow>>> showMap = new LinkedHashMap<>();
+      Map<String, TrackedShow> refreshedShowDetails = new LinkedHashMap<>();
       for (String userId : users) {
         try {
           var userShows = storage.loadAll(userId);
@@ -129,6 +131,7 @@ public class DailyUpdateScheduler {
         try {
           // Avoid bulk OMDb enrichment from the scheduler to prevent provider auth/rate issues
           TrackedShow fresh = metadata.fetchDetails(tmdbId, tvmazeId, false);
+          refreshedShowDetails.put(key, fresh);
           // Apply fresh data to each user copy
           for (var ref : refs) {
             String userId = ref.getKey();
@@ -200,29 +203,42 @@ public class DailyUpdateScheduler {
         if (!metadata.isOmdbConfigured()) {
           log.debug("OMDb not configured — skipping rating enrichment pass");
         } else {
-          List<String> omdbCandidates = new ArrayList<>();
+          List<String> unratedCandidates = new ArrayList<>();
+          List<String> ratedCandidates = new ArrayList<>();
           for (var entry : showMap.entrySet()) {
             var refs = entry.getValue();
             if (refs == null || refs.isEmpty()) {
               continue;
             }
             TrackedShow rep = refs.getFirst().getValue();
-            // Determine last fetched timestamp (support both new and legacy fields)
-            String lastFetched;
-            try {
-              lastFetched = rep == null ? null
-                  : (rep.ratingLastFetched != null ? rep.ratingLastFetched : rep.ratingsUpdatedAt);
-            } catch (Throwable t) {
-              lastFetched = rep == null ? null : rep.ratingsUpdatedAt;
+            if (rep == null) {
+              continue;
+            }
+            LocalDate firstAir = getFirstEpisodeAir(refs, refreshedShowDetails.get(entry.getKey()));
+            if (firstAir != null && firstAir.isAfter(LocalDate.now())) {
+              log.info("OMDb enrichment skipped show '{}': first episode airs in the future ({})",
+                  rep.title, firstAir);
+              continue;
             }
 
+            boolean unrated = refs.stream()
+                .map(Entry::getValue)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(show -> !hasRatingValue(show.imdbRating));
+            if (unrated) {
+              unratedCandidates.add(entry.getKey());
+              continue;
+            }
+
+            // Determine last fetched timestamp (support both new and legacy fields)
+            String lastFetched = rep.ratingLastFetched != null
+                ? rep.ratingLastFetched
+                : rep.ratingsUpdatedAt;
+
             // Skip dormant shows only when a rating value is already stored.
-            LocalDate latestAir = (rep == null) ? null : getLatestAir(rep);
-            boolean hasRating = rep != null
-                && (hasRatingValue(rep.imdbRating) || hasRatingValue(rep.rtRating));
-            if (hasRating && latestAir != null && latestAir.isBefore(
+            LocalDate latestAir = getLatestAir(rep);
+            if (latestAir != null && latestAir.isBefore(
                 LocalDate.now().minusMonths(6))) {
-              // skip re-checking ratings for dormant shows that already have a rating
               continue;
             }
 
@@ -243,11 +259,16 @@ public class DailyUpdateScheduler {
               }
             }
             if (include) {
-              omdbCandidates.add(entry.getKey());
+              ratedCandidates.add(entry.getKey());
             }
           }
 
+          List<String> omdbCandidates = new ArrayList<>(unratedCandidates);
+          omdbCandidates.addAll(ratedCandidates);
           log.info("OMDb enrichment: {} candidate show(s) selected", omdbCandidates.size());
+          log.info("OMDb enrichment candidates: {}", omdbCandidates.stream()
+              .map(key -> showMap.get(key).getFirst().getValue().title)
+              .toList());
           for (String key : omdbCandidates) {
             var refs = showMap.get(key);
             if (refs == null || refs.isEmpty()) {
@@ -257,15 +278,30 @@ public class DailyUpdateScheduler {
             if (rep == null) {
               continue;
             }
-            String ratingsBeforeFetch = rep.ratingsUpdatedAt;
             try {
-              // strict mode: rethrow OMDb failures so we can stop on 401
-              metadata.enrichRatings(rep, true);
-              if (rep.ratingsUpdatedAt == null
-                  || java.util.Objects.equals(ratingsBeforeFetch, rep.ratingsUpdatedAt)) {
+              OmdbProvider.ShowEnrichmentResult result = metadata.enrichRatings(rep, true);
+              if (result == null) {
+                log.info("OMDb enrichment skipped show '{}': no result was returned", rep.title);
                 continue;
               }
-              rep.ratingLastFetched = rep.ratingsUpdatedAt;
+              switch (result.status()) {
+                case UPDATED -> log.info("OMDb enrichment updated show '{}'", rep.title);
+                case NO_RATING, NO_RESULT, SKIPPED ->
+                    log.info("OMDb enrichment skipped show '{}': {}", rep.title, result.detail());
+                case FAILED ->
+                    log.warn("OMDb provider returned a failure for '{}': {}", rep.title,
+                        result.detail());
+              }
+              if (result.status() == OmdbProvider.ShowEnrichmentStatus.FAILED
+                  && ("OMDb authentication failed".equals(result.detail())
+                      || (result.detail() != null && result.detail().contains("HTTP 429")))) {
+                log.warn("Stopping remaining rating requests after an OMDb authentication/quota rejection");
+                break;
+              }
+              if (result.status() != OmdbProvider.ShowEnrichmentStatus.UPDATED
+                  || rep.ratingsUpdatedAt == null) {
+                continue;
+              }
 
               // propagate ratings to all other user copies of the same show
               for (var ref : refs) {
@@ -281,9 +317,9 @@ public class DailyUpdateScheduler {
 
             } catch (Exception e) {
               String msg = e.getMessage() == null ? e.toString() : e.getMessage();
-              log.warn("OMDb enrichment failed for '{}': {}", rep.title, msg);
-              if (msg.contains("HTTP 401")) {
-                log.warn("OMDb returned 401 — halting OMDb enrichment for this run");
+              log.warn("OMDb rating enrichment threw for '{}': {}", rep.title, msg);
+              if (msg.contains("HTTP 401") || msg.contains("HTTP 429")) {
+                log.warn("Aborting the remaining OMDb candidate loop due to authentication/quota response");
                 break;
               }
             }
@@ -342,6 +378,57 @@ public class DailyUpdateScheduler {
       }
     }
     return latestAir;
+  }
+
+  @Nullable
+  private static LocalDate getFirstEpisodeAir(
+      List<Entry<String, TrackedShow>> refs, @Nullable TrackedShow refreshed) {
+    List<TrackedShow> sources = new ArrayList<>();
+    for (Entry<String, TrackedShow> ref : refs) {
+      if (ref.getValue() != null) sources.add(ref.getValue());
+    }
+    if (refreshed != null) sources.add(refreshed);
+
+    int firstSeasonNumber = Integer.MAX_VALUE;
+    int firstEpisodeNumber = Integer.MAX_VALUE;
+    for (TrackedShow show : sources) {
+      if (show == null || show.seasons == null) continue;
+      for (Season season : show.seasons) {
+        if (season.number <= 0 || season.episodes == null) continue;
+        for (var episode : season.episodes) {
+          if (episode.number <= 0) continue;
+          if (season.number < firstSeasonNumber
+              || (season.number == firstSeasonNumber && episode.number < firstEpisodeNumber)) {
+            firstSeasonNumber = season.number;
+            firstEpisodeNumber = episode.number;
+          }
+        }
+      }
+    }
+    if (firstSeasonNumber == Integer.MAX_VALUE) return null;
+    for (TrackedShow show : sources) {
+      if (show == null || show.seasons == null) continue;
+      for (Season season : show.seasons) {
+        if (season.number != firstSeasonNumber || season.episodes == null) continue;
+        for (var episode : season.episodes) {
+          if (episode.number == firstEpisodeNumber) {
+            LocalDate airDate = parseAirDate(episode.airDate);
+            if (airDate != null) return airDate;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  @Nullable
+  private static LocalDate parseAirDate(String airDate) {
+    if (airDate == null || airDate.isBlank()) return null;
+    try {
+      return LocalDate.parse(airDate);
+    } catch (Exception ignored) {
+      return null;
+    }
   }
 
   /**

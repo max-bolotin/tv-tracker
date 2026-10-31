@@ -123,4 +123,115 @@ public class DailyUpdateSchedulerTest {
 
         verify(metadata).enrichRatings(show, true);
     }
+
+    @Test
+    void unratedShowWithRecentFetchDateIsSelected() throws Exception {
+        TrackedShow show = show("Unrated", "tmdb:42");
+        show.imdbRating = null;
+        show.ratingLastFetched = LocalDate.now().toString();
+        runRatingPass(List.of(show));
+
+        verify(metadata).enrichRatings(show, true);
+    }
+
+    @Test
+    void unratedShowWithFutureFirstEpisodeIsSkipped() throws Exception {
+        TrackedShow show = show("Upcoming", "tmdb:43");
+        show.seasons = new ArrayList<>(List.of(new Season(1)));
+        show.seasons.getFirst().episodes = new ArrayList<>(
+                List.of(new Episode(1, "Pilot", LocalDate.now().plusDays(30).toString())));
+        runRatingPass(List.of(show));
+
+        verify(metadata, never()).enrichRatings(show, true);
+    }
+
+    @Test
+    void futureFirstEpisodeFromRefreshedDetailsIsSkipped() throws Exception {
+        TrackedShow show = show("Upcoming", "tmdb:47");
+        show.seasons = new ArrayList<>(List.of(new Season(1)));
+        show.seasons.getFirst().episodes = new ArrayList<>(List.of(new Episode(1, "Pilot", null)));
+        TrackedShow fresh = new TrackedShow();
+        fresh.seasons = new ArrayList<>(List.of(new Season(1)));
+        fresh.seasons.getFirst().episodes = new ArrayList<>(List.of(
+                new Episode(1, "Pilot", LocalDate.now().plusDays(30).toString())));
+        when(storage.listUserIds()).thenReturn(List.of("fresh-date-user"));
+        when(storage.loadAll("fresh-date-user")).thenReturn(new ArrayList<>(List.of(show)));
+        when(metadata.fetchDetails(47L, null, false)).thenReturn(fresh);
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+
+        scheduler.doCheck();
+
+        verify(metadata, never()).enrichRatings(show, true);
+    }
+
+    @Test
+    void ratedShowsStillUseTheRandomizedAgeRule() throws Exception {
+        TrackedShow stale = show("Stale rating", "tmdb:44");
+        stale.imdbRating = "8.0";
+        stale.ratingsUpdatedAt = LocalDate.now().minusDays(22).toString();
+        TrackedShow recent = show("Recent rating", "tmdb:45");
+        recent.imdbRating = "8.0";
+        recent.ratingsUpdatedAt = LocalDate.now().minusDays(1).toString();
+        runRatingPass(List.of(stale, recent));
+
+        verify(metadata).enrichRatings(stale, true);
+        verify(metadata, never()).enrichRatings(recent, true);
+    }
+
+    @Test
+    void sameUnratedShowIsOnlySelectedOnceAcrossUsers() throws Exception {
+        TrackedShow firstUserCopy = show("Shared", "tmdb:46");
+        TrackedShow secondUserCopy = show("Shared", "tmdb:46");
+        when(storage.listUserIds()).thenReturn(List.of("u6", "u7"));
+        when(storage.loadAll("u6")).thenReturn(new ArrayList<>(List.of(firstUserCopy)));
+        when(storage.loadAll("u7")).thenReturn(new ArrayList<>(List.of(secondUserCopy)));
+        when(metadata.fetchDetails(46L, null, false)).thenReturn(new TrackedShow());
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+
+        scheduler.doCheck();
+
+        verify(metadata, times(1)).enrichRatings(any(TrackedShow.class), eq(true));
+    }
+
+    @Test
+    void updatedRatingIsPropagatedWhenFetchDateWasAlreadyToday() throws Exception {
+        TrackedShow firstUserCopy = show("Shared", "tmdb:48");
+        firstUserCopy.ratingsUpdatedAt = LocalDate.now().toString();
+        TrackedShow secondUserCopy = show("Shared", "tmdb:48");
+        when(storage.listUserIds()).thenReturn(List.of("u8", "u9"));
+        when(storage.loadAll("u8")).thenReturn(new ArrayList<>(List.of(firstUserCopy)));
+        when(storage.loadAll("u9")).thenReturn(new ArrayList<>(List.of(secondUserCopy)));
+        when(metadata.fetchDetails(48L, null, false)).thenReturn(new TrackedShow());
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+        when(metadata.enrichRatings(firstUserCopy, true)).thenAnswer(invocation -> {
+            firstUserCopy.imdbRating = "8.7";
+            firstUserCopy.ratingsUpdatedAt = LocalDate.now().toString();
+            firstUserCopy.ratingLastFetched = firstUserCopy.ratingsUpdatedAt;
+            return new com.tvtracker.provider.OmdbProvider.ShowEnrichmentResult(
+                    com.tvtracker.provider.OmdbProvider.ShowEnrichmentStatus.UPDATED, null);
+        });
+
+        scheduler.doCheck();
+
+        assertThat(secondUserCopy.imdbRating).isEqualTo("8.7");
+        assertThat(secondUserCopy.ratingsUpdatedAt).isEqualTo(LocalDate.now().toString());
+    }
+
+    private TrackedShow show(String title, String key) {
+        TrackedShow show = makeShow(title, new ArrayList<>());
+        show.tmdbId = Long.parseLong(key.substring("tmdb:".length()));
+        show.imdbId = "tt1234567";
+        return show;
+    }
+
+    private void runRatingPass(List<TrackedShow> shows) throws Exception {
+        when(storage.listUserIds()).thenReturn(List.of("rating-user"));
+        when(storage.loadAll("rating-user")).thenReturn(new ArrayList<>(shows));
+        for (TrackedShow show : shows) {
+            when(metadata.fetchDetails(show.tmdbId, show.tvmazeId, false))
+                    .thenReturn(new TrackedShow());
+        }
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+        scheduler.doCheck();
+    }
 }

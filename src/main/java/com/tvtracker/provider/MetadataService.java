@@ -7,6 +7,9 @@ import com.tvtracker.model.MovieEntry;
 import com.tvtracker.model.MovieSearchResult;
 import com.tvtracker.model.ShowSearchResult;
 import com.tvtracker.model.TrackedShow;
+import com.tvtracker.provider.OmdbProvider.MovieEnrichmentException;
+import com.tvtracker.provider.OmdbProvider.ShowEnrichmentStatus;
+import com.tvtracker.provider.OmdbProvider.ShowEnrichmentResult;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -143,7 +146,7 @@ public class MetadataService {
             log.warn("OMDb enrichment failed for movie '{}'; returning TMDB metadata without ratings: {}",
                 movie.title, e.getMessage());
           }
-          boolean requestAttempted = e instanceof OmdbProvider.MovieEnrichmentException enrichmentException
+          boolean requestAttempted = e instanceof MovieEnrichmentException enrichmentException
               ? enrichmentException.requestAttempted()
               : !omdb.isBackoffActive();
           result = new MovieMetadataResult(movie, false, requestAttempted);
@@ -547,12 +550,14 @@ public class MetadataService {
   }
 
   /**
-   * Enrich ratings via OMDb. If strict==true, rethrow exceptions from OMDb so callers can react
-   * (used by scheduler to stop on 401). If strict==false, exceptions are logged and swallowed
-   * (existing behavior).
+   * Enrich ratings via OMDb. If strict==true, rethrow unexpected exceptions so the scheduler can
+   * report this show's failure and continue with other candidates.
    */
-  public void enrichRatings(TrackedShow show, boolean strict) {
-    if (!omdb.isConfigured()) return;
+  public ShowEnrichmentResult enrichRatings(TrackedShow show, boolean strict) {
+    if (!omdb.isConfigured()) {
+      return new ShowEnrichmentResult(
+          ShowEnrichmentStatus.SKIPPED, "OMDb is not configured");
+    }
     try {
       if (show.imdbId == null && show.tmdbId != null && tmdb.isConfigured()) {
         show.imdbId = tmdb.fetchImdbId(show.tmdbId);
@@ -565,15 +570,31 @@ public class MetadataService {
       if (show.imdbId == null) {
         log.warn("enrichRatings: no imdbId for show='{}' (tmdbId={}, tvmazeId={}) — skipping ratings",
             show.title, show.tmdbId, show.tvmazeId);
-        return;
+        return new ShowEnrichmentResult(
+            ShowEnrichmentStatus.SKIPPED, "no IMDb ID");
       }
-      omdb.enrichShow(show);
-      for (var season : show.seasons) {
-        omdb.enrichSeason(show, season);
+      ShowEnrichmentResult result = omdb.enrichShow(show);
+      if (result != null && (result.status() == ShowEnrichmentStatus.UPDATED
+          || (result.status() == ShowEnrichmentStatus.SKIPPED
+              && "rating is still fresh".equals(result.detail())))) {
+        for (var season : show.seasons) {
+          omdb.enrichSeason(show, season);
+        }
       }
+      if (result != null && result.status() == ShowEnrichmentStatus.FAILED
+          && !strict) {
+        log.warn("OMDb reported rating lookup failure for show='{}': {}",
+            show.title, result.detail());
+      }
+      return result == null
+          ? new ShowEnrichmentResult(
+              ShowEnrichmentStatus.SKIPPED, "no enrichment result")
+          : result;
     } catch (Exception e) {
       if (strict) throw e;
-      log.warn("enrichRatings failed for show={}: {}", show.title, e.getMessage());
+      log.warn("Rating enrichment threw for show='{}': {}", show.title, e.getMessage());
+      return new ShowEnrichmentResult(
+          ShowEnrichmentStatus.FAILED, e.getMessage());
     }
   }
 
