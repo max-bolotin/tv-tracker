@@ -574,8 +574,10 @@ public class MetadataService {
             ShowEnrichmentStatus.SKIPPED, "no IMDb ID");
       }
       ShowEnrichmentResult result = omdb.enrichShow(show);
-      for (var season : show.seasons) {
-        omdb.enrichSeason(show, season);
+      if (result != null && result.status() == ShowEnrichmentStatus.UPDATED) {
+        for (var season : show.seasons) {
+          omdb.enrichSeason(show, season);
+        }
       }
       if (result != null && result.status() == ShowEnrichmentStatus.FAILED
           && !strict) {

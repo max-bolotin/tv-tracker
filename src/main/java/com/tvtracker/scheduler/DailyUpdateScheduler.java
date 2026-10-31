@@ -278,7 +278,6 @@ public class DailyUpdateScheduler {
             if (rep == null) {
               continue;
             }
-            String ratingsBeforeFetch = rep.ratingsUpdatedAt;
             try {
               OmdbProvider.ShowEnrichmentResult result = metadata.enrichRatings(rep, true);
               if (result == null) {
@@ -290,11 +289,17 @@ public class DailyUpdateScheduler {
                 case NO_RATING, NO_RESULT, SKIPPED ->
                     log.info("OMDb enrichment skipped show '{}': {}", rep.title, result.detail());
                 case FAILED ->
-                    log.warn("OMDb enrichment failed for '{}': {}", rep.title, result.detail());
+                    log.warn("OMDb provider returned a failure for '{}': {}", rep.title,
+                        result.detail());
+              }
+              if (result.status() == OmdbProvider.ShowEnrichmentStatus.FAILED
+                  && ("OMDb authentication failed".equals(result.detail())
+                      || (result.detail() != null && result.detail().contains("HTTP 429")))) {
+                log.warn("Stopping remaining rating requests after an OMDb authentication/quota rejection");
+                break;
               }
               if (result.status() != OmdbProvider.ShowEnrichmentStatus.UPDATED
-                  || rep.ratingsUpdatedAt == null
-                  || java.util.Objects.equals(ratingsBeforeFetch, rep.ratingsUpdatedAt)) {
+                  || rep.ratingsUpdatedAt == null) {
                 continue;
               }
 
@@ -312,7 +317,11 @@ public class DailyUpdateScheduler {
 
             } catch (Exception e) {
               String msg = e.getMessage() == null ? e.toString() : e.getMessage();
-              log.warn("OMDb enrichment failed for '{}': {}", rep.title, msg);
+              log.warn("OMDb rating enrichment threw for '{}': {}", rep.title, msg);
+              if (msg.contains("HTTP 401") || msg.contains("HTTP 429")) {
+                log.warn("Aborting the remaining OMDb candidate loop due to authentication/quota response");
+                break;
+              }
             }
 
             // pause between OMDb requests

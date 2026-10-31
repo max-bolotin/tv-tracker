@@ -48,7 +48,7 @@ public class DailyUpdateSchedulerOmdb401Test {
         AtomicInteger calls = new AtomicInteger(0);
         doAnswer(invocation -> {
             if (calls.getAndIncrement() == 0) {
-                throw new RuntimeException("HTTP 401 - {\"Response\":\"False\",\"Error\":\"Invalid API key!\"}");
+                throw new RuntimeException("temporary network failure");
             }
             return null;
         }).when(metadata).enrichRatings(any(TrackedShow.class), eq(true));
@@ -57,5 +57,24 @@ public class DailyUpdateSchedulerOmdb401Test {
 
         // A failure for one show must not prevent rating lookup for the next show.
         verify(metadata, times(2)).enrichRatings(any(TrackedShow.class), eq(true));
+    }
+
+    @Test
+    void authenticationFailureStopsFurtherOmdbRequests() throws Exception {
+        TrackedShow s1 = new TrackedShow(); s1.title = "S1";
+        TrackedShow s2 = new TrackedShow(); s2.title = "S2";
+
+        when(storage.listUserIds()).thenReturn(List.of("u1"));
+        when(storage.loadAll("u1")).thenReturn(new ArrayList<>(List.of(s1, s2)));
+        when(metadata.fetchDetails(any(), any(), eq(false))).thenReturn(new TrackedShow());
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+        when(metadata.enrichRatings(any(TrackedShow.class), eq(true))).thenReturn(
+                new com.tvtracker.provider.OmdbProvider.ShowEnrichmentResult(
+                        com.tvtracker.provider.OmdbProvider.ShowEnrichmentStatus.FAILED,
+                        "OMDb authentication failed"));
+
+        scheduler.doCheck();
+
+        verify(metadata, times(1)).enrichRatings(any(TrackedShow.class), eq(true));
     }
 }

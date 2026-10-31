@@ -193,6 +193,30 @@ public class DailyUpdateSchedulerTest {
         verify(metadata, times(1)).enrichRatings(any(TrackedShow.class), eq(true));
     }
 
+    @Test
+    void updatedRatingIsPropagatedWhenFetchDateWasAlreadyToday() throws Exception {
+        TrackedShow firstUserCopy = show("Shared", "tmdb:48");
+        firstUserCopy.ratingsUpdatedAt = LocalDate.now().toString();
+        TrackedShow secondUserCopy = show("Shared", "tmdb:48");
+        when(storage.listUserIds()).thenReturn(List.of("u8", "u9"));
+        when(storage.loadAll("u8")).thenReturn(new ArrayList<>(List.of(firstUserCopy)));
+        when(storage.loadAll("u9")).thenReturn(new ArrayList<>(List.of(secondUserCopy)));
+        when(metadata.fetchDetails(48L, null, false)).thenReturn(new TrackedShow());
+        when(metadata.isOmdbConfigured()).thenReturn(true);
+        when(metadata.enrichRatings(firstUserCopy, true)).thenAnswer(invocation -> {
+            firstUserCopy.imdbRating = "8.7";
+            firstUserCopy.ratingsUpdatedAt = LocalDate.now().toString();
+            firstUserCopy.ratingLastFetched = firstUserCopy.ratingsUpdatedAt;
+            return new com.tvtracker.provider.OmdbProvider.ShowEnrichmentResult(
+                    com.tvtracker.provider.OmdbProvider.ShowEnrichmentStatus.UPDATED, null);
+        });
+
+        scheduler.doCheck();
+
+        assertThat(secondUserCopy.imdbRating).isEqualTo("8.7");
+        assertThat(secondUserCopy.ratingsUpdatedAt).isEqualTo(LocalDate.now().toString());
+    }
+
     private TrackedShow show(String title, String key) {
         TrackedShow show = makeShow(title, new ArrayList<>());
         show.tmdbId = Long.parseLong(key.substring("tmdb:".length()));

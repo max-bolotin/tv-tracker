@@ -106,6 +106,22 @@ class OmdbProviderMovieTest {
     }
 
     @Test
+    void rtOnlyRatingDoesNotMakeShowRatingFresh() {
+        responseBody = """
+                {"Response":"True","imdbRating":"8.1","Ratings":[]}
+                """;
+        TrackedShow show = new TrackedShow();
+        show.imdbId = "tt0000042";
+        show.rtRating = "94%";
+        show.ratingsUpdatedAt = java.time.LocalDate.now().minusMonths(1).toString();
+
+        provider().enrichShow(show);
+
+        assertEquals("8.1", show.imdbRating);
+        assertEquals(1, requestCount.get());
+    }
+
+    @Test
     void showResponseFalseLeavesRatingDatesUntouched() {
         responseBody = """
                 {"Response":"False","Error":"Series not found!"}

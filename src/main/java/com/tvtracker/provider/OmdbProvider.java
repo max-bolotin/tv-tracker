@@ -80,7 +80,7 @@ public class OmdbProvider {
             return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "no IMDb ID");
         }
         if (isBackoffActive()) return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "OMDb backoff is active");
-        if (hasShowRating(show) && isRatingFresh(show.ratingsUpdatedAt)) {
+        if (hasRatingValue(show.imdbRating) && isRatingFresh(show.ratingsUpdatedAt)) {
             return new ShowEnrichmentResult(ShowEnrichmentStatus.SKIPPED, "rating is still fresh");
         }
         try {
@@ -193,10 +193,6 @@ public class OmdbProvider {
         } catch (Exception e) {
             return false;
         }
-    }
-
-    private boolean hasShowRating(TrackedShow show) {
-        return hasRatingValue(show.imdbRating) || hasRatingValue(show.rtRating);
     }
 
     private boolean hasRatingValue(String rating) {
