@@ -12,6 +12,8 @@ import {ThemeSwitcher} from '../components/ThemeSwitcher';
 import {useMobileMenu} from '../hooks/useMobileMenu';
 import {MovieLibrary} from '../components/MovieLibrary';
 import {MovieDetail} from '../components/MovieDetail';
+import {trackedForResult} from '../utils/trackedShowMatcher';
+import * as React from "react";
 
 type DashboardTab = WatchStatus | 'ALL' | 'POPULAR' | 'MOVIES';
 
@@ -585,15 +587,6 @@ export function Dashboard() {
   };
 
 
-  const trackedForResult = (r: ShowSearchResult | null): TrackedShow | null => {
-    if (!r) return null;
-    const byId = allShows.find(s => (r.tmdbId && s.tmdbId === r.tmdbId) || (r.tvmazeId && s.tvmazeId === r.tvmazeId));
-    if (byId) return byId;
-    const title = r.title?.toLowerCase().trim();
-    if (title) return allShows.find(s => s.title && s.title.toLowerCase().trim() === title) ?? null;
-    return null;
-  };
-
   const handleSignIn = (targetTab?: string) => {
     // Remember desired tab after login (frontend-only). Backend redirects to frontend root.
     if (targetTab) localStorage.setItem('postLoginTab', targetTab);
@@ -834,7 +827,7 @@ export function Dashboard() {
                   result={preview}
                   onClose={handleCloseModal}
                   onTrack={handleAdd}
-                  trackedShow={trackedForResult(preview)}
+                  trackedShow={trackedForResult(preview, allShows)}
                   onUpdate={handleUpdate}
               />
           )}
@@ -957,7 +950,7 @@ export function Dashboard() {
                   result={preview}
                   onClose={handleCloseModal}
                   onTrack={handleAdd}
-                  trackedShow={trackedForResult(preview)}
+                  trackedShow={trackedForResult(preview, allShows)}
                   onUpdate={handleUpdate}
               />
           )}
@@ -1109,7 +1102,7 @@ export function Dashboard() {
                 result={preview}
                 onClose={handleCloseModal}
                 onTrack={handleAdd}
-                trackedShow={trackedForResult(preview)}
+                trackedShow={trackedForResult(preview, allShows)}
                 onUpdate={handleUpdate}
             />
         )}
