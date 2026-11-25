@@ -1,5 +1,6 @@
 package com.tvtracker.scheduler;
 
+import com.tvtracker.model.Episode;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import com.tvtracker.model.WatchStatus;
@@ -531,18 +532,20 @@ public class DailyUpdateScheduler {
       var existingSeason = existing.seasons.stream()
           .filter(s -> s.number == freshSeason.number).findFirst();
       if (existingSeason.isEmpty()) {
-        // only add seasons that contain episodes (and skip episode number 0)
-        if (freshSeason.episodes != null && !freshSeason.episodes.isEmpty()) {
-          var copy = new Season(freshSeason.number);
-          copy.episodes = new ArrayList<>();
-          for (var ep : freshSeason.episodes) {
-            if (ep.number == 0) {
-              continue;
-            }
-            copy.episodes.add(ep);
+        // Keep catalogued seasons with no episodes yet so they can appear on
+        // the show card. A season containing only episode 0 remains excluded.
+        var copy = new Season(freshSeason.number);
+        copy.episodes = new ArrayList<>();
+        List<Episode> freshEpisodes = freshSeason.episodes == null ? List.of() : freshSeason.episodes;
+        for (var ep : freshEpisodes) {
+          if (ep.number == 0) {
+            continue;
           }
+          copy.episodes.add(ep);
+        }
+        if (freshEpisodes.isEmpty() || !copy.episodes.isEmpty()) {
+          existing.seasons.add(copy);
           if (!copy.episodes.isEmpty()) {
-            existing.seasons.add(copy);
             addedAny = true;
           }
         }
