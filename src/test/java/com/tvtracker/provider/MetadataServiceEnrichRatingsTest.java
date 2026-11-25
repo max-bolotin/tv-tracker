@@ -1,5 +1,6 @@
 package com.tvtracker.provider;
 
+import com.tvtracker.model.Episode;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
 import java.util.ArrayList;
@@ -32,6 +33,22 @@ class MetadataServiceEnrichRatingsTest {
         show.seasons = new ArrayList<>();
         for (int n : seasonNumbers) show.seasons.add(new Season(n));
         return show;
+    }
+
+    @Test
+    void fetchDetails_keepsEmptyFutureSeasonsButStillFiltersSeasonAndEpisodeZero() {
+        when(tmdb.isConfigured()).thenReturn(true);
+        TrackedShow upstream = showWithSeasons(null, 84L, 0, 1, 2, 3);
+        upstream.seasons.get(0).episodes.add(new Episode(1, "Special", null));
+        upstream.seasons.get(1).episodes.add(new Episode(0, "Special", null));
+        upstream.seasons.get(3).episodes.add(new Episode(1, "Episode", null));
+        when(tmdb.fetchDetails(84L)).thenReturn(upstream);
+
+        TrackedShow result = service.fetchDetails(84L, null, false);
+
+        assertThat(result.seasons).extracting(season -> season.number).containsExactly(2, 3);
+        assertThat(result.seasons.get(0).episodes).isEmpty();
+        assertThat(result.totalSeasons).isEqualTo(2);
     }
 
     // ---- skips entirely when omdb not configured ----

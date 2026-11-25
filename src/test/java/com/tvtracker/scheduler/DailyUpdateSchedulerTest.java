@@ -4,6 +4,7 @@ import com.tvtracker.model.Actor;
 import com.tvtracker.model.Episode;
 import com.tvtracker.model.Season;
 import com.tvtracker.model.TrackedShow;
+import com.tvtracker.model.WatchStatus;
 import com.tvtracker.provider.MetadataService;
 import com.tvtracker.storage.JsonStorageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,37 @@ public class DailyUpdateSchedulerTest {
         s.title = title;
         s.cast = cast;
         return s;
+    }
+
+    @Test
+    void emptyFutureSeasonIsAddedToCardDataWithoutChangingUpToDateStatus() throws Exception {
+        TrackedShow existing = makeShow("Upcoming season", new ArrayList<>());
+        existing.tmdbId = 84L;
+        existing.watchStatus = WatchStatus.UP_TO_DATE;
+        existing.seasons = new ArrayList<>(List.of(new Season(1)));
+        existing.seasons.getFirst().episodes = new ArrayList<>(List.of(
+                new Episode(1, "Finale", LocalDate.now().minusDays(1).toString())));
+        existing.seasons.getFirst().episodes.getFirst().watched = true;
+        existing.totalSeasons = 1;
+
+        TrackedShow fresh = makeShow("Upcoming season", new ArrayList<>());
+        fresh.productionStatus = existing.productionStatus;
+        fresh.seasons = new ArrayList<>(List.of(new Season(1), new Season(2)));
+        fresh.seasons.getFirst().episodes = new ArrayList<>(List.of(
+                new Episode(1, "Finale", LocalDate.now().minusDays(1).toString())));
+        fresh.totalSeasons = 2;
+
+        when(storage.listUserIds()).thenReturn(List.of("future-season-user"));
+        when(storage.loadAll("future-season-user")).thenReturn(new ArrayList<>(List.of(existing)));
+        when(metadata.fetchDetails(84L, null, false)).thenReturn(fresh);
+
+        scheduler.doCheck();
+
+        assertThat(existing.seasons).extracting(season -> season.number).containsExactly(1, 2);
+        assertThat(existing.seasons.getLast().episodes).isEmpty();
+        assertThat(existing.totalSeasons).isEqualTo(2);
+        assertThat(existing.watchStatus).isEqualTo(WatchStatus.UP_TO_DATE);
+        verify(storage).saveAll(eq("future-season-user"), anyList());
     }
 
     @Test

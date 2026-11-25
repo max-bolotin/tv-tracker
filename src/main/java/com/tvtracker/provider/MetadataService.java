@@ -427,11 +427,11 @@ public class MetadataService {
             copy.episodes.add(ep);
           }
         }
-        // Only include seasons with episodes
-        if (!copy.episodes.isEmpty()) {
+        // Keep catalogued seasons even when no episodes are available yet. If a
+        // season contained only episode 0 entries, continue treating it as empty.
+        boolean hadEpisodeEntries = chosen.episodes != null && !chosen.episodes.isEmpty();
+        if (!hadEpisodeEntries || !copy.episodes.isEmpty()) {
           mergedSeasons.add(copy);
-        } else {
-          log.debug("fetchDetails: skipping empty season {} for show='{}'", num, merged.title);
         }
       }
       merged.seasons = mergedSeasons;
@@ -531,14 +531,19 @@ public class MetadataService {
     return copy;
   }
 
-  /** Removes season 0 and episode 0 entries from a show (in-place). */
+  /** Removes season 0 and episode 0 entries from a show, retaining empty future seasons. */
   private void filterZeroSeasonsAndEpisodes(TrackedShow show) {
     if (show.seasons == null) return;
     show.seasons.removeIf(s -> s.number == 0);
-    for (var s : show.seasons) {
-      if (s.episodes != null) s.episodes.removeIf(e -> e.number == 0);
-    }
-    show.seasons.removeIf(s -> s.episodes == null || s.episodes.isEmpty());
+    show.seasons.removeIf(s -> {
+      if (s.episodes == null) {
+        s.episodes = new ArrayList<>();
+        return false;
+      }
+      boolean hadEpisodes = !s.episodes.isEmpty();
+      s.episodes.removeIf(e -> e.number == 0);
+      return hadEpisodes && s.episodes.isEmpty();
+    });
     show.totalSeasons = show.seasons.size();
   }
 
